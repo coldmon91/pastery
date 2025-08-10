@@ -1,0 +1,8 @@
+[package]
+name = "pastery"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arboard = "3.6.0"
+rdev = "0.5.3"
