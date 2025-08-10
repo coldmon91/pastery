@@ -47,6 +47,10 @@ fn key_event_handle(channel: mpsc::Receiver<Event>) {
                         }
                         if paste_key_combination.is_active() {
                             // paste from user's choice
+                            let result = clipboard_data.read_last(5);
+                            for (date, sequence, content) in result {
+                                println!("Clipboard data: [{}] {}: \"{}\"", date, sequence, content);
+                            }
                         }
                     },
                     _ => {}
