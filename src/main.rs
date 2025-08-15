@@ -1,25 +1,35 @@
+// this program is Pastery's background server
+// it runs in the background and listens for keyboard events
+// it communicates with the GUI program via a message channel
+// it uses a database to store clipboard history
 mod database;
 mod key_combination;
+mod server;
+mod settings;
 
-use std::sync::mpsc;
-
+use std::sync::{mpsc, Arc, Mutex};
 use arboard::Clipboard;
 use rdev::{listen, Event};
+use settings::Settings;
 
-// const COPY_EVENT_CODE: &str = "\u{3}";
-// const PASTE_EVENT_CODE: &str = "\u{16}";
-
-fn new_windows_copy_key_combination() -> key_combination::KeyCombination {
-    key_combination::KeyCombination::new(rdev::Key::ControlLeft, rdev::Key::KeyC)
+fn create_key_combination_from_settings(binding: &settings::KeyBinding) -> key_combination::KeyCombination {
+    let keys = settings::key_binding_to_keys(binding);
+    if keys.len() >= 2 {
+        key_combination::KeyCombination::new(keys[0], keys[1])
+    } else {
+        // 기본값으로 fallback
+        key_combination::KeyCombination::new(rdev::Key::ControlLeft, rdev::Key::KeyC)
+    }
 }
-fn new_windows_paste_key_combination() -> key_combination::KeyCombination {
-    key_combination::KeyCombination::new(rdev::Key::ControlLeft, rdev::Key::KeyV)
-}
 
-fn key_event_handle(channel: mpsc::Receiver<Event>) {
-    let mut copy_key_combination = new_windows_copy_key_combination();
-    let mut paste_key_combination = new_windows_paste_key_combination();
-    let clipboard_data = database::ClipboardData::new("clip.data".to_string());
+fn key_event_handle(
+    channel: mpsc::Receiver<Event>, 
+    clipboard_data: Arc<Mutex<database::ClipboardData>>,
+    settings: Settings,
+) {
+    let mut copy_key_combination = create_key_combination_from_settings(&settings.copy_key);
+    let mut paste_key_combination = create_key_combination_from_settings(&settings.paste_key);
+    
     loop {
         match channel.recv() {
             Ok(event) => {
@@ -31,8 +41,11 @@ fn key_event_handle(channel: mpsc::Receiver<Event>) {
                         if copy_key_combination.contains(key) {
                             if copy_key_combination.is_active() {
                                 let mut clipboard = Clipboard::new().unwrap();
-                                println!("Clipboard content: {}", clipboard.get_text().unwrap());
-                                clipboard_data.write(clipboard.get_text().unwrap().as_str());
+                                if let Ok(text) = clipboard.get_text() {
+                                    println!("Clipboard content: {}", text);
+                                    let clipboard_data = clipboard_data.lock().unwrap();
+                                    clipboard_data.write(&text);
+                                }
                             }
                             copy_key_combination.release_key(key);
                         }
@@ -46,10 +59,13 @@ fn key_event_handle(channel: mpsc::Receiver<Event>) {
                             paste_key_combination.press_key(key);
                         }
                         if paste_key_combination.is_active() {
-                            // paste from user's choice
-                            let result = clipboard_data.read_last(5);
-                            for (date, sequence, content) in result {
-                                println!("Clipboard data: [{}] {}: \"{}\"", date, sequence, content);
+                            // paste from user's choice - 최근 5개 클립보드 항목 표시
+                            let clipboard_data = clipboard_data.lock().unwrap();
+                            let items = clipboard_data.get_clipboard_items(Some(5));
+                            for item in items {
+                                let memo_text = item.memo.unwrap_or_else(|| "No memo".to_string());
+                                println!("Clipboard data: [{}] {}-{}: \"{}\" (Memo: {})", 
+                                    item.date, item.date, item.sequence, item.content, memo_text);
                             }
                         }
                     },
@@ -65,16 +81,44 @@ fn callback(event: Event, channel: mpsc::Sender<Event>) {
     channel.send(event.clone()).unwrap();
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     println!("Pastery is running");
+    
+    // 설정 로드
+    let settings = Settings::load();
+    println!("Settings loaded. Server will run on port {}, max clipboard items: {}", 
+             settings.server_port, settings.max_clipboard_items);
+    
+    // 데이터베이스 초기화
+    let clipboard_data = Arc::new(Mutex::new(database::ClipboardData::new(
+        "clip.data".to_string(), 
+        settings.max_clipboard_items
+    )));
+    
+    // 키보드 이벤트 처리를 위한 채널
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        key_event_handle(rx);
+    
+    // 서버용 클립보드 데이터 복사
+    let server_clipboard_data = clipboard_data.clone();
+    let server_port = settings.server_port;
+    
+    // 서버 시작 (백그라운드)
+    tokio::spawn(async move {
+        server::start_server(server_clipboard_data, server_port).await;
     });
+    
+    // 키보드 이벤트 처리 스레드
+    let keyboard_clipboard_data = clipboard_data.clone();
+    let keyboard_settings = settings.clone();
+    std::thread::spawn(move || {
+        key_event_handle(rx, keyboard_clipboard_data, keyboard_settings);
+    });
+    
+    // 키보드 리스너 시작
     if let Err(error) = listen(move |event| {
         callback(event, tx.clone())
     }) {
         println!("Error: {:?}", error)
     }
-    println!("Hello, world!");
 }

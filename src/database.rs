@@ -1,5 +1,6 @@
 
 use redb::{Database, TableDefinition, ReadableTable, ReadableDatabase};
+use serde::{Serialize, Deserialize};
 
 /**
  * clipboard data stored in redb
@@ -8,13 +9,23 @@ use redb::{Database, TableDefinition, ReadableTable, ReadableDatabase};
  */
 
 const CLIPBOARD_TABLE: TableDefinition<&str, &str> = TableDefinition::new("clipboard");
+const MEMO_TABLE: TableDefinition<&str, &str> = TableDefinition::new("memo");
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ClipboardItem {
+    pub date: String,
+    pub sequence: u64,
+    pub content: String,
+    pub memo: Option<String>,
+}
 
 pub struct ClipboardData {
     db: Database,
+    max_items: usize,
 }
 
 impl ClipboardData {
-    pub fn new(path: String) -> Self {
+    pub fn new(path: String, max_items: usize) -> Self {
         let dir = std::path::Path::new(&path).parent();
         if let Some(dir) = dir {
             if !dir.exists() {
@@ -22,15 +33,16 @@ impl ClipboardData {
             }
         }
         let db = Database::create(&path).expect(&format!("Failed to create database at {}", &path));
-        println!("Database created at {}", &path);
-        // Initialize the table
+        println!("Database created at {} with max items: {}", &path, max_items);
+        // Initialize the tables
         let write_txn = db.begin_write().expect("Failed to begin write transaction");
         {
             let _ = write_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
+            let _ = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
         }
         write_txn.commit().expect("Failed to commit transaction");
         
-        ClipboardData { db }
+        ClipboardData { db, max_items }
     }
 
     pub fn write(&self, text: &str) {
@@ -46,6 +58,9 @@ impl ClipboardData {
                 .expect("Failed to insert clipboard data");
         }
         write_txn.commit().expect("Failed to commit transaction");
+        
+        // 최대 개수 제한 확인 및 정리
+        self.cleanup_old_items();
     }
     
     pub fn read(&self, date_key: &str, sequence: u64) -> Option<String> {
@@ -146,6 +161,163 @@ impl ClipboardData {
         }
         max_sequence + 1
     }
+
+    // 메모 관련 메서드들
+    pub fn add_memo(&self, date_key: &str, sequence: u64, memo: &str) {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+    }
+
+    pub fn get_memo(&self, date_key: &str, sequence: u64) -> Option<String> {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        if let Some(value) = table.get(full_key.as_str()).expect("Failed to get memo") {
+            Some(value.value().to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn update_memo(&self, date_key: &str, sequence: u64, memo: &str) {
+        self.add_memo(date_key, sequence, memo);
+    }
+
+    pub fn delete_memo(&self, date_key: &str, sequence: u64) {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            table.remove(full_key.as_str()).expect("Failed to remove memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+    }
+
+    pub fn get_clipboard_items(&self, count: Option<usize>) -> Vec<ClipboardItem> {
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let clipboard_table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open clipboard table");
+        let memo_table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        let mut all_results = Vec::new();
+        
+        // 모든 클립보드 데이터를 수집
+        for item in clipboard_table.iter().expect("Failed to iterate clipboard table") {
+            if let Ok((key, value)) = item {
+                let key_str = key.value();
+                if let Some(last_dash) = key_str.rfind('-') {
+                    let date_part = &key_str[..last_dash];
+                    let sequence_part = &key_str[last_dash + 1..];
+                    
+                    if let Ok(sequence) = sequence_part.parse::<u64>() {
+                        let memo = memo_table.get(key_str)
+                            .expect("Failed to get memo")
+                            .map(|v| v.value().to_string());
+                        
+                        all_results.push(ClipboardItem {
+                            date: date_part.to_string(),
+                            sequence,
+                            content: value.value().to_string(),
+                            memo,
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 날짜를 기준으로 내림차순, 같은 날짜면 시퀀스를 기준으로 내림차순 정렬
+        all_results.sort_by(|a, b| {
+            match b.date.cmp(&a.date) {
+                std::cmp::Ordering::Equal => b.sequence.cmp(&a.sequence),
+                other => other,
+            }
+        });
+        
+        // 요청된 개수만큼 반환
+        if let Some(count) = count {
+            all_results.into_iter().take(count).collect()
+        } else {
+            all_results
+        }
+    }
+
+    pub fn add_custom_memo(&self, memo: &str) -> String {
+        let now = chrono::Local::now();
+        let date_key = now.format("%Y-%m-%d").to_string();
+        let sequence = self.get_next_sequence(&date_key);
+        let full_key = format!("{}-{}", date_key, sequence);
+        
+        // 빈 클립보드 내용으로 항목 생성
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut clipboard_table = write_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
+            let mut memo_table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            
+            clipboard_table.insert(full_key.as_str(), "").expect("Failed to insert clipboard data");
+            memo_table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+        
+        full_key
+    }
+
+    // 오래된 항목들을 정리하여 최대 개수를 유지
+    fn cleanup_old_items(&self) {
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let clipboard_table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open clipboard table");
+        
+        let mut all_items = Vec::new();
+        
+        // 모든 클립보드 데이터를 수집
+        for item in clipboard_table.iter().expect("Failed to iterate clipboard table") {
+            if let Ok((key, _)) = item {
+                let key_str = key.value();
+                if let Some(last_dash) = key_str.rfind('-') {
+                    let date_part = &key_str[..last_dash];
+                    let sequence_part = &key_str[last_dash + 1..];
+                    
+                    if let Ok(sequence) = sequence_part.parse::<u64>() {
+                        all_items.push((date_part.to_string(), sequence, key_str.to_string()));
+                    }
+                }
+            }
+        }
+        drop(read_txn); // 읽기 트랜잭션 종료
+        
+        // 항목 수가 최대치를 초과하는 경우에만 정리
+        if all_items.len() > self.max_items {
+            // 날짜를 기준으로 내림차순, 같은 날짜면 시퀀스를 기준으로 내림차순 정렬
+            all_items.sort_by(|a, b| {
+                match b.0.cmp(&a.0) {
+                    std::cmp::Ordering::Equal => b.1.cmp(&a.1),
+                    other => other,
+                }
+            });
+            
+            // 최대치를 초과하는 오래된 항목들 삭제
+            let items_to_delete = &all_items[self.max_items..];
+            
+            let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+            {
+                let mut clipboard_table = write_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open clipboard table");
+                let mut memo_table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+                
+                for (_, _, key) in items_to_delete {
+                    clipboard_table.remove(key.as_str()).ok(); // 에러 무시
+                    memo_table.remove(key.as_str()).ok(); // 에러 무시 (메모가 없을 수도 있음)
+                }
+            }
+            write_txn.commit().expect("Failed to commit transaction");
+            
+            println!("Cleaned up {} old clipboard items. Current count: {}", 
+                     items_to_delete.len(), self.max_items);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -164,7 +336,7 @@ mod tests {
         }
         
         // ClipboardData 인스턴스 생성
-        let clipboard_data = ClipboardData::new(test_path.to_string());
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
         // 시간을 미리 고정
         let date_key = "2025-08-10";
@@ -201,7 +373,7 @@ mod tests {
         }
         
         // ClipboardData 인스턴스 생성
-        let clipboard_data = ClipboardData::new(test_path.to_string());
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
         // 존재하지 않는 키로 읽기 시도
         let result = clipboard_data.read("2024-01-01", 1);
@@ -224,7 +396,7 @@ mod tests {
         }
         
         // ClipboardData 인스턴스 생성
-        let clipboard_data = ClipboardData::new(test_path.to_string());
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
         // 테스트 데이터와 키 준비
         let test_data = vec![
@@ -280,7 +452,7 @@ mod tests {
         }
         
         // ClipboardData 인스턴스 생성
-        let clipboard_data = ClipboardData::new(test_path.to_string());
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
         // 테스트 데이터 준비 (다른 날짜와 시퀀스로)
         let test_data = vec![
@@ -343,7 +515,7 @@ mod tests {
         }
         
         // ClipboardData 인스턴스 생성
-        let clipboard_data = ClipboardData::new(test_path.to_string());
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
         // 같은 날짜에 여러 데이터 저장
         clipboard_data.write("First clipboard content");
@@ -363,6 +535,46 @@ mod tests {
         println!("Write test passed:");
         for (seq, content) in &today_data {
             println!("  {}-{} -> {}", today, seq, content);
+        }
+        
+        // 테스트 파일 정리
+        fs::remove_file(test_path).unwrap();
+    }
+
+    #[test]
+    fn test_max_items_cleanup() {
+        // 테스트용 임시 파일 경로
+        let test_path = "test_clipboard_max_items.db";
+        
+        // 기존 테스트 파일이 있다면 삭제
+        if std::path::Path::new(test_path).exists() {
+            fs::remove_file(test_path).unwrap();
+        }
+        
+        // 최대 3개 항목으로 제한하여 ClipboardData 인스턴스 생성
+        let clipboard_data = ClipboardData::new(test_path.to_string(), 3);
+        
+        // 5개 항목 추가 (최대 3개를 초과)
+        clipboard_data.write("First item");
+        clipboard_data.write("Second item");
+        clipboard_data.write("Third item");
+        clipboard_data.write("Fourth item");  // 이때 첫 번째 항목이 삭제되어야 함
+        clipboard_data.write("Fifth item");   // 이때 두 번째 항목이 삭제되어야 함
+        
+        // 현재 저장된 항목들 확인
+        let items = clipboard_data.get_clipboard_items(None);
+        
+        // 최대 3개만 남아있어야 함
+        assert_eq!(items.len(), 3);
+        
+        // 최신 3개 항목이 남아있는지 확인
+        assert_eq!(items[0].content, "Fifth item");
+        assert_eq!(items[1].content, "Fourth item");
+        assert_eq!(items[2].content, "Third item");
+        
+        println!("Max items cleanup test passed:");
+        for item in &items {
+            println!("  {}-{} -> {}", item.date, item.sequence, item.content);
         }
         
         // 테스트 파일 정리
