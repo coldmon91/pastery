@@ -84,7 +84,7 @@ pub async fn start_server(clipboard_data: Arc<Mutex<ClipboardData>>, port: u16) 
         .with(cors);
 
     println!("Starting server on port {}", port);
-    warp::serve(routes).run(([127, 0, 0, 1], port)).await;
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }
 
 async fn handle_get_clipboard(
