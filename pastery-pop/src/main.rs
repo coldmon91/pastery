@@ -1,9 +1,11 @@
-use iced::widget::{button, column, container, scrollable, text};
-use iced::{Application, Command, Element, Font, Length, Settings, Theme};
+use iced::widget::{button, column, container, pick_list, row, scrollable, text};
+use iced::{Application, Command, Element, Length, Settings, Theme};
 use serde::{Deserialize, Serialize};
 
-// 한글 폰트 정의
-const KOREAN_FONT: Font = Font::with_name("Malgun Gothic");
+mod localization;
+mod settings;
+use localization::{Language, Texts};
+use settings::Settings as AppSettings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardItem {
@@ -32,14 +34,23 @@ struct PasteryPop {
     clipboard_items: Vec<ClipboardItem>,
     loading: bool,
     error_message: Option<String>,
+    language: Language,
+    texts: Texts,
+    settings: AppSettings,
 }
 
 impl Default for PasteryPop {
     fn default() -> Self {
+        let settings = AppSettings::load();
+        let language = settings.language;
+        let texts = Texts::new(language);
         Self {
             clipboard_items: Vec::new(),
             loading: false,
             error_message: None,
+            language,
+            texts,
+            settings,
         }
     }
 }
@@ -55,7 +66,7 @@ impl Application for PasteryPop {
     }
 
     fn title(&self) -> String {
-        String::from("Pastery Pop - 클립보드 관리자")
+        String::from(self.texts.app_title)
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -81,10 +92,10 @@ impl Application for PasteryPop {
             Message::SelectItem(item) => {
                 // 선택된 항목을 클립보드에 복사
                 if let Err(e) = copy_to_clipboard(&item.content) {
-                    self.error_message = Some(format!("클립보드 복사 실패: {}", e));
+                    self.error_message = Some(format!("{}: {}", self.texts.copy_failed, e));
                 } else {
                     let preview = truncate_string(&item.content, 30);
-                    self.error_message = Some(format!("클립보드에 복사됨: {}", preview));
+                    self.error_message = Some(format!("{}: {}", self.texts.copied_to_clipboard, preview));
                 }
                 Command::none()
             }
@@ -92,44 +103,55 @@ impl Application for PasteryPop {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        let current_font = self.language.font();
         let header = column![
-            text("Pastery Pop - 클립보드 관리자").size(24).font(KOREAN_FONT),
-            text("Pastery 서버의 클립보드 항목들을 관리할 수 있습니다.").size(14).font(KOREAN_FONT),
-            button(text("새로고침").font(KOREAN_FONT)).on_press(Message::Refresh)
+            text(self.texts.app_title).size(24).font(current_font),
+            // text(self.texts.app_description).size(14).font(current_font),
+            button(text(self.texts.refresh).font(current_font)).on_press(Message::Refresh)
         ]
         .spacing(10);
 
         let content = if self.loading {
-            column![text("클립보드 항목을 불러오는 중...").size(16).font(KOREAN_FONT)]
+            column![text(self.texts.loading).size(16).font(current_font)]
         } else if let Some(error) = &self.error_message {
             column![
-                text(format!("상태: {}", error)).size(14).font(KOREAN_FONT),
-                button(text("다시 시도").font(KOREAN_FONT)).on_press(Message::Refresh)
+                text(format!("{}: {}", self.texts.status, error)).size(14).font(current_font),
+                button(text(self.texts.retry).font(current_font)).on_press(Message::Refresh)
             ]
             .spacing(10)
         } else if self.clipboard_items.is_empty() {
             column![
-                text("클립보드 항목이 없습니다.").size(16).font(KOREAN_FONT),
-                text("Pastery 서버가 실행 중인지 확인해주세요. (http://localhost:3030)").size(12).font(KOREAN_FONT),
-                button(text("새로고침").font(KOREAN_FONT)).on_press(Message::Refresh)
+                text(self.texts.no_items).size(16).font(current_font),
+                text(self.texts.server_check).size(12).font(current_font),
+                button(text(self.texts.refresh).font(current_font)).on_press(Message::Refresh)
             ]
             .spacing(10)
         } else {
             let mut items_column = column![
-                text(format!("총 {} 개의 클립보드 항목:", self.clipboard_items.len())).size(16).font(KOREAN_FONT)
+                text(format!("{} {} {}", 
+                    self.clipboard_items.len(), 
+                    self.texts.total_items.trim_end_matches(':'),
+                    self.texts.total_items.chars().last().unwrap_or(' ')
+                )).size(16).font(current_font)
             ].spacing(10);
 
             for (index, item) in self.clipboard_items.iter().enumerate() {
                 let preview = truncate_string(&item.content, 80);
 
                 let item_text = if let Some(memo) = &item.memo {
-                    format!("{}. [{}] {} (메모: {})", index + 1, item.date, preview, memo)
+                    format!("{}. [{}] {} ({}: {})", 
+                        index + 1, 
+                        item.date, 
+                        preview, 
+                        self.texts.memo, 
+                        memo
+                    )
                 } else {
                     format!("{}. [{}] {}", index + 1, item.date, preview)
                 };
 
                 items_column = items_column.push(
-                    button(text(item_text).font(KOREAN_FONT))
+                    button(text(item_text).font(current_font))
                         .width(Length::Fill)
                         .on_press(Message::SelectItem(item.clone())),
                 );
