@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use warp::Filter;
 use serde::{Deserialize, Serialize};
-use crate::database::{ClipboardData, MemoData};
+use crate::database::ClipboardData;
 
 #[derive(Deserialize)]
 struct MemoRequest {
@@ -41,12 +41,10 @@ impl ApiResponse {
 
 pub async fn start_server(
     clipboard_data: Arc<Mutex<ClipboardData>>, 
-    memo_data: Arc<Mutex<MemoData>>, 
     port: u16
 ) {
     // GET /clipboard - 클립보드 항목들 조회
     let clipboard_data_filter = warp::any().map(move || clipboard_data.clone());
-    let memo_data_filter = warp::any().map(move || memo_data.clone());
     
     let get_clipboard = warp::path("clipboard")
         .and(warp::get())
@@ -58,21 +56,21 @@ pub async fn start_server(
     let add_memo = warp::path("memo")
         .and(warp::post())
         .and(warp::body::json())
-        .and(memo_data_filter.clone())
+        .and(clipboard_data_filter.clone())
         .and_then(handle_add_memo);
 
     // PUT /memo - 기존 항목에 메모 추가/수정
     let update_memo = warp::path("memo")
         .and(warp::put())
         .and(warp::body::json())
-        .and(memo_data_filter.clone())
+        .and(clipboard_data_filter.clone())
         .and_then(handle_update_memo);
 
     // DELETE /memo/{sequence} - 메모 삭제
     let delete_memo = warp::path("memo")
         .and(warp::path::param::<u64>())
         .and(warp::delete())
-        .and(memo_data_filter.clone())
+        .and(clipboard_data_filter.clone())
         .and_then(handle_delete_memo);
 
     let cors = warp::cors()
@@ -110,10 +108,10 @@ async fn handle_get_clipboard(
 
 async fn handle_add_memo(
     request: MemoRequest,
-    memo_data: Arc<Mutex<MemoData>>,
+    clipboard_data: Arc<Mutex<ClipboardData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let memo_data = memo_data.lock().unwrap();
-    let key = memo_data.add_memo(&request.memo);
+    let clipboard_data = clipboard_data.lock().unwrap();
+    let key = clipboard_data.add_memo(&request.memo);
     
     let response = ApiResponse::success(
         "Custom memo added successfully",
@@ -125,10 +123,10 @@ async fn handle_add_memo(
 
 async fn handle_update_memo(
     request: UpdateMemoRequest,
-    memo_data: Arc<Mutex<MemoData>>,
+    clipboard_data: Arc<Mutex<ClipboardData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let memo_data = memo_data.lock().unwrap();
-    memo_data.update_memo(request.sequence, &request.memo);
+    let clipboard_data = clipboard_data.lock().unwrap();
+    clipboard_data.update_memo(request.sequence, &request.memo);
     
     let response = ApiResponse::success("Memo updated successfully", None);
     Ok(warp::reply::json(&response))
@@ -136,10 +134,10 @@ async fn handle_update_memo(
 
 async fn handle_delete_memo(
     sequence: u64,
-    memo_data: Arc<Mutex<MemoData>>,
+    clipboard_data: Arc<Mutex<ClipboardData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let memo_data = memo_data.lock().unwrap();
-    memo_data.delete_memo(sequence);
+    let clipboard_data = clipboard_data.lock().unwrap();
+    clipboard_data.delete_memo(sequence);
     
     let response = ApiResponse::success("Memo deleted successfully", None);
     Ok(warp::reply::json(&response))

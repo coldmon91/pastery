@@ -25,7 +25,6 @@ fn create_key_combination_from_settings(binding: &settings::KeyBinding) -> key_c
 fn key_event_handle(
     channel: mpsc::Receiver<Event>, 
     clipboard_data: Arc<Mutex<database::ClipboardData>>,
-    memo_data: Arc<Mutex<database::MemoData>>,
     settings: Settings,
 ) {
     let mut copy_key_combination = create_key_combination_from_settings(&settings.copy_key);
@@ -89,36 +88,30 @@ async fn main() {
     println!("Settings loaded. Server will run on port {}, max clipboard items: {}", 
              settings.server_port, settings.max_clipboard_items);
     
-        // 데이터베이스 초기화
-    let db_path = "clipboard.db".to_string();
+    // 통합 데이터베이스 초기화 (clip.db 파일 하나만 사용)
+    let db_path = "clip.db".to_string();
     let clipboard_data = Arc::new(Mutex::new(database::ClipboardData::new(
         db_path.clone(),
         settings.max_clipboard_items
     )));
-    
-    // 메모 데이터베이스 초기화 (같은 경로에 memo.db 파일)
-    let memo_db_path = "memo.db".to_string();
-    let memo_data = Arc::new(Mutex::new(database::MemoData::new(memo_db_path)));
     
     // 키보드 이벤트 처리를 위한 채널
     let (tx, rx) = mpsc::channel();
     
     // 서버용 클립보드 데이터 복사
     let server_clipboard_data = clipboard_data.clone();
-    let server_memo_data = memo_data.clone();
     let server_port = settings.server_port;
     
     // 서버 시작 (백그라운드)
     tokio::spawn(async move {
-        server::start_server(server_clipboard_data, server_memo_data, server_port).await;
+        server::start_server(server_clipboard_data, server_port).await;
     });
     
     // 키보드 이벤트 처리 스레드
     let keyboard_clipboard_data = clipboard_data.clone();
-    let keyboard_memo_data = memo_data.clone();
     let keyboard_settings = settings.clone();
     std::thread::spawn(move || {
-        key_event_handle(rx, keyboard_clipboard_data, keyboard_memo_data, keyboard_settings);
+        key_event_handle(rx, keyboard_clipboard_data, keyboard_settings);
     });
     
     // 키보드 리스너 시작

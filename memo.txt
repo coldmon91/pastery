@@ -1,4 +1,0 @@
-pastery는 Rust로 작성된 백그라운드 서버 프로그램이야.
-pastery-pop은 Rust로 작성된 프론트엔드 프로그램이야.
-두 cargo 패키지는 하나의 프로젝트야.
-두개의 cargo 패키지를 하나의 cargo 패키지로 합쳐줘.

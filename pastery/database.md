@@ -1,8 +1,7 @@
 # Database Management
 
 ## Database file name
-- Clipboard data: `clipboard.db` (default)
-- Memo data: `memo.db` (default)
+- `clip.db`
 
 ## Key Formats
 
