@@ -1,5 +1,6 @@
 use iced::widget::{button, column, container, pick_list, row, scrollable, text};
 use iced::{Application, Command, Element, Length, Settings, Theme};
+use iced::window;
 use serde::{Deserialize, Serialize};
 
 mod localization;
@@ -67,7 +68,7 @@ impl Application for PasteryPop {
     }
 
     fn title(&self) -> String {
-        String::from(self.texts.app_title)
+        String::new() // 빈 문자열로 타이틀 숨기기
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -224,6 +225,10 @@ fn copy_to_clipboard(content: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() -> iced::Result {
     let settings = Settings {
+        window: window::Settings {
+            decorations: false,
+            ..window::Settings::default()
+        },
         ..Settings::default()
     };
 
