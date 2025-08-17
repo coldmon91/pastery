@@ -4,8 +4,12 @@ use serde::{Serialize, Deserialize};
 
 /**
  * clipboard data stored in redb
- * format : date-time-sequence -> clipboard_content
- * key format: "YYYY-MM-DD-sequence" (e.g., "2025-08-10-1", "2025-08-10-2")
+ * format : clipboard-date-time-sequence -> clipboard_content
+ * key format: "clipboard-YYYY-MM-DD-sequence" (e.g., "clipboard-2025-08-10-1", "clipboard-2025-08-10-2")
+ * 
+ * memo data stored in redb
+ * format : memo-sequence -> memo_content
+ * key format: "memo-sequence" (e.g., "memo-1", "memo-2")
  */
 
 const CLIPBOARD_TABLE: TableDefinition<&str, &str> = TableDefinition::new("clipboard");
@@ -54,18 +58,20 @@ impl MemoData {
         MemoData { db }
     }
 
-    pub fn add_memo(&self, date_key: &str, sequence: u64, memo: &str) {
-        let full_key = format!("{}-{}", date_key, sequence);
+    pub fn add_memo(&self, memo: &str) -> String {
+        let sequence = self.get_next_memo_sequence();
+        let full_key = format!("memo-{}", sequence);
         let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
         {
             let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
             table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
         }
         write_txn.commit().expect("Failed to commit transaction");
+        full_key
     }
 
-    pub fn get_memo(&self, date_key: &str, sequence: u64) -> Option<String> {
-        let full_key = format!("{}-{}", date_key, sequence);
+    pub fn get_memo(&self, sequence: u64) -> Option<String> {
+        let full_key = format!("memo-{}", sequence);
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
         
@@ -76,12 +82,18 @@ impl MemoData {
         }
     }
 
-    pub fn update_memo(&self, date_key: &str, sequence: u64, memo: &str) {
-        self.add_memo(date_key, sequence, memo);
+    pub fn update_memo(&self, sequence: u64, memo: &str) {
+        let full_key = format!("memo-{}", sequence);
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
     }
 
-    pub fn delete_memo(&self, date_key: &str, sequence: u64) {
-        let full_key = format!("{}-{}", date_key, sequence);
+    pub fn delete_memo(&self, sequence: u64) {
+        let full_key = format!("memo-{}", sequence);
         let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
         {
             let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
@@ -100,13 +112,11 @@ impl MemoData {
         for item in memo_table.iter().expect("Failed to iterate memo table") {
             if let Ok((key, value)) = item {
                 let key_str = key.value();
-                if let Some(last_dash) = key_str.rfind('-') {
-                    let date_part = &key_str[..last_dash];
-                    let sequence_part = &key_str[last_dash + 1..];
-                    
-                    if let Ok(sequence) = sequence_part.parse::<u64>() {
+                // memo-sequence 형식에서 sequence 추출
+                if let Some(sequence_str) = key_str.strip_prefix("memo-") {
+                    if let Ok(sequence) = sequence_str.parse::<u64>() {
                         all_results.push(MemoItem {
-                            date: date_part.to_string(),
+                            date: String::new(), // memo는 더 이상 날짜를 사용하지 않음
                             sequence,
                             memo: value.value().to_string(),
                         });
@@ -115,13 +125,8 @@ impl MemoData {
             }
         }
         
-        // 날짜를 기준으로 내림차순, 같은 날짜면 시퀀스를 기준으로 내림차순 정렬
-        all_results.sort_by(|a, b| {
-            match b.date.cmp(&a.date) {
-                std::cmp::Ordering::Equal => b.sequence.cmp(&a.sequence),
-                other => other,
-            }
-        });
+        // 시퀀스를 기준으로 내림차순 정렬
+        all_results.sort_by(|a, b| b.sequence.cmp(&a.sequence));
         
         // 요청된 개수만큼 반환
         if let Some(count) = count {
@@ -131,20 +136,42 @@ impl MemoData {
         }
     }
 
-    pub fn get_memo_item(&self, date_key: &str, sequence: u64) -> Option<MemoItem> {
-        let full_key = format!("{}-{}", date_key, sequence);
+    pub fn get_memo_item(&self, sequence: u64) -> Option<MemoItem> {
+        let full_key = format!("memo-{}", sequence);
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
         
         if let Some(value) = table.get(full_key.as_str()).expect("Failed to get memo") {
             Some(MemoItem {
-                date: date_key.to_string(),
+                date: String::new(), // memo는 더 이상 날짜를 사용하지 않음
                 sequence,
                 memo: value.value().to_string(),
             })
         } else {
             None
         }
+    }
+
+    fn get_next_memo_sequence(&self) -> u64 {
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        let mut max_sequence = 0u64;
+        
+        for item in table.iter().expect("Failed to iterate table") {
+            let (key, _) = item.expect("Failed to read item");
+            let key_str = key.value();
+            
+            // memo-sequence 형식에서 sequence 추출
+            if let Some(sequence_str) = key_str.strip_prefix("memo-") {
+                if let Ok(sequence) = sequence_str.parse::<u64>() {
+                    if sequence > max_sequence {
+                        max_sequence = sequence;
+                    }
+                }
+            }
+        }
+        max_sequence + 1
     }
 }
 
@@ -173,7 +200,7 @@ impl ClipboardData {
         let now = chrono::Local::now();
         let date_key = now.format("%Y-%m-%d").to_string();
         let sequence = self.get_next_sequence(&date_key);
-        let full_key = format!("{}-{}", date_key, sequence);
+        let full_key = format!("clipboard-{}-{}", date_key, sequence);
         
         let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
         {
@@ -191,7 +218,7 @@ impl ClipboardData {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
         
-        let full_key = format!("{}-{}", date_key, sequence);
+        let full_key = format!("clipboard-{}-{}", date_key, sequence);
         if let Some(value) = table.get(full_key.as_str()).expect("Failed to get clipboard data") {
             Some(value.value().to_string())
         } else {
@@ -204,7 +231,7 @@ impl ClipboardData {
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
         
         let mut results = Vec::new();
-        let date_prefix = format!("{}-", date_key);
+        let date_prefix = format!("clipboard-{}-", date_key);
         
         for item in table.iter().expect("Failed to iterate table") {
             if let Ok((key, value)) = item {
@@ -235,13 +262,15 @@ impl ClipboardData {
         for item in table.iter().expect("Failed to iterate table") {
             if let Ok((key, value)) = item {
                 let key_str = key.value();
-                // 키 형식: "YYYY-MM-DD-sequence"에서 날짜와 시퀀스 분리
-                if let Some(last_dash) = key_str.rfind('-') {
-                    let date_part = &key_str[..last_dash];
-                    let sequence_part = &key_str[last_dash + 1..];
-                    
-                    if let Ok(sequence) = sequence_part.parse::<u64>() {
-                        all_results.push((date_part.to_string(), sequence, value.value().to_string()));
+                // 키 형식: "clipboard-YYYY-MM-DD-sequence"에서 날짜와 시퀀스 분리
+                if let Some(clipboard_prefix) = key_str.strip_prefix("clipboard-") {
+                    if let Some(last_dash) = clipboard_prefix.rfind('-') {
+                        let date_part = &clipboard_prefix[..last_dash];
+                        let sequence_part = &clipboard_prefix[last_dash + 1..];
+                        
+                        if let Ok(sequence) = sequence_part.parse::<u64>() {
+                            all_results.push((date_part.to_string(), sequence, value.value().to_string()));
+                        }
                     }
                 }
             }
@@ -265,7 +294,7 @@ impl ClipboardData {
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
         
         let mut max_sequence = 0u64;
-        let date_prefix = format!("{}-", date_key);
+        let date_prefix = format!("clipboard-{}-", date_key);
         
         for item in table.iter().expect("Failed to iterate table") {
             let (key, _) = item.expect("Failed to read item");
@@ -273,7 +302,7 @@ impl ClipboardData {
             
             // 해당 날짜의 키인지 확인
             if key_str.starts_with(&date_prefix) {
-                // 키에서 시퀀스 번호 추출 (예: "2025-08-10-3"에서 "3" 추출)
+                // 키에서 시퀀스 번호 추출 (예: "clipboard-2025-08-10-3"에서 "3" 추출)
                 if let Some(sequence_str) = key_str.strip_prefix(&date_prefix) {
                     if let Ok(sequence) = sequence_str.parse::<u64>() {
                         if sequence > max_sequence {
@@ -296,16 +325,19 @@ impl ClipboardData {
         for item in clipboard_table.iter().expect("Failed to iterate clipboard table") {
             if let Ok((key, value)) = item {
                 let key_str = key.value();
-                if let Some(last_dash) = key_str.rfind('-') {
-                    let date_part = &key_str[..last_dash];
-                    let sequence_part = &key_str[last_dash + 1..];
-                    
-                    if let Ok(sequence) = sequence_part.parse::<u64>() {
-                        all_results.push(ClipboardItem {
-                            date: date_part.to_string(),
-                            sequence,
-                            content: value.value().to_string(),
-                        });
+                // 키 형식: "clipboard-YYYY-MM-DD-sequence"에서 날짜와 시퀀스 분리
+                if let Some(clipboard_prefix) = key_str.strip_prefix("clipboard-") {
+                    if let Some(last_dash) = clipboard_prefix.rfind('-') {
+                        let date_part = &clipboard_prefix[..last_dash];
+                        let sequence_part = &clipboard_prefix[last_dash + 1..];
+                        
+                        if let Ok(sequence) = sequence_part.parse::<u64>() {
+                            all_results.push(ClipboardItem {
+                                date: date_part.to_string(),
+                                sequence,
+                                content: value.value().to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -338,12 +370,15 @@ impl ClipboardData {
         for item in clipboard_table.iter().expect("Failed to iterate clipboard table") {
             if let Ok((key, _)) = item {
                 let key_str = key.value();
-                if let Some(last_dash) = key_str.rfind('-') {
-                    let date_part = &key_str[..last_dash];
-                    let sequence_part = &key_str[last_dash + 1..];
-                    
-                    if let Ok(sequence) = sequence_part.parse::<u64>() {
-                        all_items.push((date_part.to_string(), sequence, key_str.to_string()));
+                // 키 형식: "clipboard-YYYY-MM-DD-sequence"에서 날짜와 시퀀스 분리
+                if let Some(clipboard_prefix) = key_str.strip_prefix("clipboard-") {
+                    if let Some(last_dash) = clipboard_prefix.rfind('-') {
+                        let date_part = &clipboard_prefix[..last_dash];
+                        let sequence_part = &clipboard_prefix[last_dash + 1..];
+                        
+                        if let Ok(sequence) = sequence_part.parse::<u64>() {
+                            all_items.push((date_part.to_string(), sequence, key_str.to_string()));
+                        }
                     }
                 }
             }
@@ -402,11 +437,11 @@ mod tests {
         // 시간을 미리 고정
         let date_key = "2025-08-10";
         
-        // write 메서드를 직접 호출하는 대신 수동으로 데이터 삽입
+        // write 메서드를 직접 호출하는 대신 수동으로 데이터 삽입 (새로운 키 형식 사용)
         let write_txn = clipboard_data.db.begin_write().expect("Failed to begin write transaction");
         {
             let mut table = write_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
-            table.insert("2025-08-10-1", "Hello, World!")
+            table.insert("clipboard-2025-08-10-1", "Hello, World!")
                 .expect("Failed to insert clipboard data");
         }
         write_txn.commit().expect("Failed to commit transaction");
@@ -459,11 +494,11 @@ mod tests {
         // ClipboardData 인스턴스 생성
         let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
-        // 테스트 데이터와 키 준비
+        // 테스트 데이터와 키 준비 (새로운 키 형식 사용)
         let test_data = vec![
-            ("2025-08-10-1", "First text"),
-            ("2025-08-10-2", "Second text"),
-            ("2025-08-11-1", "Third text"),
+            ("clipboard-2025-08-10-1", "First text"),
+            ("clipboard-2025-08-10-2", "Second text"),
+            ("clipboard-2025-08-11-1", "Third text"),
         ];
         
         // 데이터 수동 삽입
@@ -515,13 +550,13 @@ mod tests {
         // ClipboardData 인스턴스 생성
         let clipboard_data = ClipboardData::new(test_path.to_string(), 1000);
         
-        // 테스트 데이터 준비 (다른 날짜와 시퀀스로)
+        // 테스트 데이터 준비 (다른 날짜와 시퀀스로, 새로운 키 형식 사용)
         let test_data = vec![
-            ("2025-08-08-2", "Text from Aug 8, seq 2"),
-            ("2025-08-10-1", "Text from Aug 10, seq 1"),
-            ("2025-08-09-1", "Text from Aug 9, seq 1"),
-            ("2025-08-10-3", "Text from Aug 10, seq 3"),  // 가장 최신 날짜의 최고 시퀀스
-            ("2025-08-10-2", "Text from Aug 10, seq 2"),
+            ("clipboard-2025-08-08-2", "Text from Aug 8, seq 2"),
+            ("clipboard-2025-08-10-1", "Text from Aug 10, seq 1"),
+            ("clipboard-2025-08-09-1", "Text from Aug 9, seq 1"),
+            ("clipboard-2025-08-10-3", "Text from Aug 10, seq 3"),  // 가장 최신 날짜의 최고 시퀀스
+            ("clipboard-2025-08-10-2", "Text from Aug 10, seq 2"),
         ];
         
         // 데이터 수동 삽입
@@ -655,35 +690,36 @@ mod tests {
         // MemoData 인스턴스 생성
         let memo_data = MemoData::new(test_path.to_string());
         
-        // 메모 추가 테스트
-        memo_data.add_memo("2025-08-17", 1, "Test memo 1");
-        memo_data.add_memo("2025-08-17", 2, "Test memo 2");
-        memo_data.add_memo("2025-08-16", 1, "Test memo 3");
+        // 메모 추가 테스트 (새로운 API 사용)
+        let key1 = memo_data.add_memo("Test memo 1");
+        let key2 = memo_data.add_memo("Test memo 2");
+        let key3 = memo_data.add_memo("Test memo 3");
+        
+        // 키에서 시퀀스 추출
+        let seq1: u64 = key1.strip_prefix("memo-").unwrap().parse().unwrap();
+        let seq2: u64 = key2.strip_prefix("memo-").unwrap().parse().unwrap();
+        let seq3: u64 = key3.strip_prefix("memo-").unwrap().parse().unwrap();
         
         // 개별 메모 조회 테스트
-        let memo_item = memo_data.get_memo_item("2025-08-17", 1);
+        let memo_item = memo_data.get_memo_item(seq1);
         assert!(memo_item.is_some());
         let memo_item = memo_item.unwrap();
-        assert_eq!(memo_item.date, "2025-08-17");
-        assert_eq!(memo_item.sequence, 1);
+        assert_eq!(memo_item.sequence, seq1);
         assert_eq!(memo_item.memo, "Test memo 1");
         
         // 모든 메모 조회 테스트
         let memo_items = memo_data.get_memo_items(None);
         assert_eq!(memo_items.len(), 3);
         
-        // 정렬 확인 (날짜 내림차순, 시퀀스 내림차순)
-        assert_eq!(memo_items[0].date, "2025-08-17");
-        assert_eq!(memo_items[0].sequence, 2);
-        assert_eq!(memo_items[0].memo, "Test memo 2");
+        // 정렬 확인 (시퀀스 내림차순)
+        assert_eq!(memo_items[0].sequence, seq3);
+        assert_eq!(memo_items[0].memo, "Test memo 3");
         
-        assert_eq!(memo_items[1].date, "2025-08-17");
-        assert_eq!(memo_items[1].sequence, 1);
-        assert_eq!(memo_items[1].memo, "Test memo 1");
+        assert_eq!(memo_items[1].sequence, seq2);
+        assert_eq!(memo_items[1].memo, "Test memo 2");
         
-        assert_eq!(memo_items[2].date, "2025-08-16");
-        assert_eq!(memo_items[2].sequence, 1);
-        assert_eq!(memo_items[2].memo, "Test memo 3");
+        assert_eq!(memo_items[2].sequence, seq1);
+        assert_eq!(memo_items[2].memo, "Test memo 1");
         
         // 개수 제한 테스트
         let limited_memo_items = memo_data.get_memo_items(Some(2));
@@ -691,7 +727,7 @@ mod tests {
         
         println!("Memo items test passed:");
         for item in &memo_items {
-            println!("  {}-{} -> {}", item.date, item.sequence, item.memo);
+            println!("  memo-{} -> {}", item.sequence, item.memo);
         }
         
         // 테스트 파일 정리

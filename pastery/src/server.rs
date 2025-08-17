@@ -10,7 +10,6 @@ struct MemoRequest {
 
 #[derive(Deserialize)]
 struct UpdateMemoRequest {
-    date: String,
     sequence: u64,
     memo: String,
 }
@@ -69,9 +68,8 @@ pub async fn start_server(
         .and(memo_data_filter.clone())
         .and_then(handle_update_memo);
 
-    // DELETE /memo/{date}/{sequence} - 메모 삭제
+    // DELETE /memo/{sequence} - 메모 삭제
     let delete_memo = warp::path("memo")
-        .and(warp::path::param::<String>())
         .and(warp::path::param::<u64>())
         .and(warp::delete())
         .and(memo_data_filter.clone())
@@ -115,12 +113,7 @@ async fn handle_add_memo(
     memo_data: Arc<Mutex<MemoData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let memo_data = memo_data.lock().unwrap();
-    // MemoData에는 add_custom_memo가 없으므로, 임시로 현재 날짜와 시퀀스 1을 사용
-    let now = chrono::Local::now();
-    let date_key = now.format("%Y-%m-%d").to_string();
-    let sequence = 1; // 임시 시퀀스
-    memo_data.add_memo(&date_key, sequence, &request.memo);
-    let key = format!("{}-{}", date_key, sequence);
+    let key = memo_data.add_memo(&request.memo);
     
     let response = ApiResponse::success(
         "Custom memo added successfully",
@@ -135,19 +128,18 @@ async fn handle_update_memo(
     memo_data: Arc<Mutex<MemoData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let memo_data = memo_data.lock().unwrap();
-    memo_data.update_memo(&request.date, request.sequence, &request.memo);
+    memo_data.update_memo(request.sequence, &request.memo);
     
     let response = ApiResponse::success("Memo updated successfully", None);
     Ok(warp::reply::json(&response))
 }
 
 async fn handle_delete_memo(
-    date: String,
     sequence: u64,
     memo_data: Arc<Mutex<MemoData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let memo_data = memo_data.lock().unwrap();
-    memo_data.delete_memo(&date, sequence);
+    memo_data.delete_memo(sequence);
     
     let response = ApiResponse::success("Memo deleted successfully", None);
     Ok(warp::reply::json(&response))
