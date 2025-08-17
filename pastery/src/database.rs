@@ -16,12 +16,136 @@ pub struct ClipboardItem {
     pub date: String,
     pub sequence: u64,
     pub content: String,
-    pub memo: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MemoItem {
+    pub date: String,
+    pub sequence: u64,
+    pub memo: String,
 }
 
 pub struct ClipboardData {
     db: Database,
     max_items: usize,
+}
+
+pub struct MemoData {
+    db: Database,
+}
+
+impl MemoData {
+    pub fn new(path: String) -> Self {
+        let dir = std::path::Path::new(&path).parent();
+        if let Some(dir) = dir {
+            if !dir.exists() {
+                std::fs::create_dir_all(dir).expect(&format!("Failed to create directory {}", dir.display()));
+            }
+        }
+        let db = Database::create(&path).expect(&format!("Failed to create database at {}", &path));
+        println!("Memo database created at {}", &path);
+        // Initialize the memo table
+        let write_txn = db.begin_write().expect("Failed to begin write transaction");
+        {
+            let _ = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+        
+        MemoData { db }
+    }
+
+    pub fn add_memo(&self, date_key: &str, sequence: u64, memo: &str) {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+    }
+
+    pub fn get_memo(&self, date_key: &str, sequence: u64) -> Option<String> {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        if let Some(value) = table.get(full_key.as_str()).expect("Failed to get memo") {
+            Some(value.value().to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn update_memo(&self, date_key: &str, sequence: u64, memo: &str) {
+        self.add_memo(date_key, sequence, memo);
+    }
+
+    pub fn delete_memo(&self, date_key: &str, sequence: u64) {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
+        {
+            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+            table.remove(full_key.as_str()).expect("Failed to remove memo");
+        }
+        write_txn.commit().expect("Failed to commit transaction");
+    }
+
+    pub fn get_memo_items(&self, count: Option<usize>) -> Vec<MemoItem> {
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let memo_table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        let mut all_results = Vec::new();
+        
+        // 모든 메모 데이터를 수집
+        for item in memo_table.iter().expect("Failed to iterate memo table") {
+            if let Ok((key, value)) = item {
+                let key_str = key.value();
+                if let Some(last_dash) = key_str.rfind('-') {
+                    let date_part = &key_str[..last_dash];
+                    let sequence_part = &key_str[last_dash + 1..];
+                    
+                    if let Ok(sequence) = sequence_part.parse::<u64>() {
+                        all_results.push(MemoItem {
+                            date: date_part.to_string(),
+                            sequence,
+                            memo: value.value().to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 날짜를 기준으로 내림차순, 같은 날짜면 시퀀스를 기준으로 내림차순 정렬
+        all_results.sort_by(|a, b| {
+            match b.date.cmp(&a.date) {
+                std::cmp::Ordering::Equal => b.sequence.cmp(&a.sequence),
+                other => other,
+            }
+        });
+        
+        // 요청된 개수만큼 반환
+        if let Some(count) = count {
+            all_results.into_iter().take(count).collect()
+        } else {
+            all_results
+        }
+    }
+
+    pub fn get_memo_item(&self, date_key: &str, sequence: u64) -> Option<MemoItem> {
+        let full_key = format!("{}-{}", date_key, sequence);
+        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
+        let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
+        
+        if let Some(value) = table.get(full_key.as_str()).expect("Failed to get memo") {
+            Some(MemoItem {
+                date: date_key.to_string(),
+                sequence,
+                memo: value.value().to_string(),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl ClipboardData {
@@ -162,47 +286,9 @@ impl ClipboardData {
         max_sequence + 1
     }
 
-    // 메모 관련 메서드들
-    pub fn add_memo(&self, date_key: &str, sequence: u64, memo: &str) {
-        let full_key = format!("{}-{}", date_key, sequence);
-        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
-        {
-            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
-            table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
-        }
-        write_txn.commit().expect("Failed to commit transaction");
-    }
-
-    pub fn get_memo(&self, date_key: &str, sequence: u64) -> Option<String> {
-        let full_key = format!("{}-{}", date_key, sequence);
-        let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
-        let table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
-        
-        if let Some(value) = table.get(full_key.as_str()).expect("Failed to get memo") {
-            Some(value.value().to_string())
-        } else {
-            None
-        }
-    }
-
-    pub fn update_memo(&self, date_key: &str, sequence: u64, memo: &str) {
-        self.add_memo(date_key, sequence, memo);
-    }
-
-    pub fn delete_memo(&self, date_key: &str, sequence: u64) {
-        let full_key = format!("{}-{}", date_key, sequence);
-        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
-        {
-            let mut table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
-            table.remove(full_key.as_str()).expect("Failed to remove memo");
-        }
-        write_txn.commit().expect("Failed to commit transaction");
-    }
-
     pub fn get_clipboard_items(&self, count: Option<usize>) -> Vec<ClipboardItem> {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let clipboard_table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open clipboard table");
-        let memo_table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
         
         let mut all_results = Vec::new();
         
@@ -215,15 +301,10 @@ impl ClipboardData {
                     let sequence_part = &key_str[last_dash + 1..];
                     
                     if let Ok(sequence) = sequence_part.parse::<u64>() {
-                        let memo = memo_table.get(key_str)
-                            .expect("Failed to get memo")
-                            .map(|v| v.value().to_string());
-                        
                         all_results.push(ClipboardItem {
                             date: date_part.to_string(),
                             sequence,
                             content: value.value().to_string(),
-                            memo,
                         });
                     }
                 }
@@ -244,26 +325,6 @@ impl ClipboardData {
         } else {
             all_results
         }
-    }
-
-    pub fn add_custom_memo(&self, memo: &str) -> String {
-        let now = chrono::Local::now();
-        let date_key = now.format("%Y-%m-%d").to_string();
-        let sequence = self.get_next_sequence(&date_key);
-        let full_key = format!("{}-{}", date_key, sequence);
-        
-        // 빈 클립보드 내용으로 항목 생성
-        let write_txn = self.db.begin_write().expect("Failed to begin write transaction");
-        {
-            let mut clipboard_table = write_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
-            let mut memo_table = write_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
-            
-            clipboard_table.insert(full_key.as_str(), "").expect("Failed to insert clipboard data");
-            memo_table.insert(full_key.as_str(), memo).expect("Failed to insert memo");
-        }
-        write_txn.commit().expect("Failed to commit transaction");
-        
-        full_key
     }
 
     // 오래된 항목들을 정리하여 최대 개수를 유지
@@ -575,6 +636,62 @@ mod tests {
         println!("Max items cleanup test passed:");
         for item in &items {
             println!("  {}-{} -> {}", item.date, item.sequence, item.content);
+        }
+        
+        // 테스트 파일 정리
+        fs::remove_file(test_path).unwrap();
+    }
+
+    #[test]
+    fn test_memo_item_functionality() {
+        // 테스트용 임시 파일 경로
+        let test_path = "test_memo_items.db";
+        
+        // 기존 테스트 파일이 있다면 삭제
+        if std::path::Path::new(test_path).exists() {
+            fs::remove_file(test_path).unwrap();
+        }
+        
+        // MemoData 인스턴스 생성
+        let memo_data = MemoData::new(test_path.to_string());
+        
+        // 메모 추가 테스트
+        memo_data.add_memo("2025-08-17", 1, "Test memo 1");
+        memo_data.add_memo("2025-08-17", 2, "Test memo 2");
+        memo_data.add_memo("2025-08-16", 1, "Test memo 3");
+        
+        // 개별 메모 조회 테스트
+        let memo_item = memo_data.get_memo_item("2025-08-17", 1);
+        assert!(memo_item.is_some());
+        let memo_item = memo_item.unwrap();
+        assert_eq!(memo_item.date, "2025-08-17");
+        assert_eq!(memo_item.sequence, 1);
+        assert_eq!(memo_item.memo, "Test memo 1");
+        
+        // 모든 메모 조회 테스트
+        let memo_items = memo_data.get_memo_items(None);
+        assert_eq!(memo_items.len(), 3);
+        
+        // 정렬 확인 (날짜 내림차순, 시퀀스 내림차순)
+        assert_eq!(memo_items[0].date, "2025-08-17");
+        assert_eq!(memo_items[0].sequence, 2);
+        assert_eq!(memo_items[0].memo, "Test memo 2");
+        
+        assert_eq!(memo_items[1].date, "2025-08-17");
+        assert_eq!(memo_items[1].sequence, 1);
+        assert_eq!(memo_items[1].memo, "Test memo 1");
+        
+        assert_eq!(memo_items[2].date, "2025-08-16");
+        assert_eq!(memo_items[2].sequence, 1);
+        assert_eq!(memo_items[2].memo, "Test memo 3");
+        
+        // 개수 제한 테스트
+        let limited_memo_items = memo_data.get_memo_items(Some(2));
+        assert_eq!(limited_memo_items.len(), 2);
+        
+        println!("Memo items test passed:");
+        for item in &memo_items {
+            println!("  {}-{} -> {}", item.date, item.sequence, item.memo);
         }
         
         // 테스트 파일 정리

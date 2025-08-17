@@ -44,6 +44,7 @@ impl Default for PasteryPop {
         let settings = AppSettings::load();
         let language = settings.language;
         let texts = Texts::new(language);
+        println!("Loaded settings: {:?}", settings);
         Self {
             clipboard_items: Vec::new(),
             loading: false,
