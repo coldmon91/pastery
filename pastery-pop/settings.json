@@ -1,3 +1,7 @@
 {
-  "language": "Korean"
+  "hotkey": "Ctrl+Shift+V",
+  "server_url": "http://localhost:3030",
+  "max_items_display": 5,
+  "popup_width": 350,
+  "popup_height": 450
 }

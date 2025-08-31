@@ -1,5 +1,5 @@
 [workspace]
 members = [
     "pastery",
-    "pastery-pop",
+    "pastery-pop/src-tauri"
 ]
