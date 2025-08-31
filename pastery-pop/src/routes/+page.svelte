@@ -1,5 +1,6 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from 'svelte';
 
   let clipboardItems = $state([]);
@@ -74,8 +75,15 @@
   onMount(() => {
     loadClipboardItems();
     window.addEventListener('keydown', handleEscape);
+    
+    // 클립보드 갱신 이벤트 리스너 등록
+    const unlistenRefresh = listen('refresh-clipboard', () => {
+      loadClipboardItems();
+    });
+    
     return () => {
       window.removeEventListener('keydown', handleEscape);
+      unlistenRefresh.then(unlisten => unlisten());
     };
   });
 </script>
@@ -90,10 +98,6 @@
   role="dialog"
   aria-label="Clipboard items popup"
 >
-  <div class="header">
-    <h2>Pastery Pop</h2>
-    <button class="close-btn" onclick={hidePopup}>×</button>
-  </div>
   
   <div class="content">
     {#if loading}
@@ -117,13 +121,11 @@
             onclick={() => selectItem(item)}
             onkeydown={(e) => handleItemKeydown(e, item)}
           >
-            <div class="item-number">{index + 1}</div>
             <div class="item-content">
               <div class="item-text">{truncateText(item.content)}</div>
               {#if item.memo}
                 <div class="item-memo">{item.memo}</div>
               {/if}
-              <div class="item-date">{formatDate(item.date)}</div>
             </div>
           </div>
         {/each}
@@ -210,13 +212,13 @@
   }
 
   .error button {
-    padding: 8px 16px;
+    padding: 6px 13px;
     background: #007acc;
     color: white;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .error button:hover {

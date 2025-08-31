@@ -2,7 +2,9 @@ use tauri::{
     generate_context, generate_handler,
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder},
-    AppHandle, Manager,
+    AppHandle, 
+    Manager,
+    Emitter,
 };
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, GlobalShortcutExt};
 use serde::{Deserialize, Serialize};
@@ -114,6 +116,9 @@ async fn show_popup_at_cursor(app: AppHandle) -> Result<(), String> {
         )));
         let _ = window.show();
         let _ = window.set_focus();
+        
+        // 팝업이 표시될 때 클립보드 아이템 갱신 이벤트 발생
+        let _ = window.emit_to("main", "refresh-clipboard", ());
     }
     Ok(())
 }
