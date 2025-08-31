@@ -4,6 +4,7 @@ use tauri::{
     tray::{TrayIconBuilder},
     AppHandle, Manager,
 };
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, GlobalShortcutExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -54,6 +55,7 @@ fn load_settings() -> Settings {
         Err(_) => Settings::default(),
     }
 }
+
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -154,30 +156,15 @@ async fn hide_popup(app: AppHandle) -> Result<(), String> {
 
 fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+    let menu = Menu::with_items(app, &[&quit_i])?;
 
     let _ = TrayIconBuilder::with_id("tray")
         .menu(&menu)
-        .on_menu_event(move |app, event| match event.id.as_ref() {
+        .on_menu_event(move |_app, event| match event.id.as_ref() {
             "quit" => {
                 std::process::exit(0);
             }
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
             _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            // 좌클릭 이벤트 처리
-            let app = tray.app_handle();
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
         })
         .build(app);
 
@@ -188,8 +175,10 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_positioner::init())
-        .setup(|app| {
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(move |app| {
+            let _settings = load_settings();
+
             // 시스템 트레이 설정
             create_tray(app.handle())?;
             
@@ -198,7 +187,29 @@ pub fn run() {
                 let _ = window.hide();
             }
 
+            // Register global shortcut
+            let app_handle = app.handle().clone();
+            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyV);
+            
+            match app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, _event| {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = show_popup_at_cursor(app_handle).await;
+                });
+            }) {
+                Ok(_) => println!("Global shortcut registered successfully"),
+                Err(e) => {
+                    eprintln!("Failed to register global shortcut: {}", e);
+                    // 이미 등록된 shortcut이 있을 수 있으므로 앱을 계속 실행
+                }
+            }
+
             Ok(())
+        })
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Focused(false) = event {
+                _window.hide().unwrap();
+            }
         })
         .invoke_handler(generate_handler![
             greet,
