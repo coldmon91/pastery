@@ -11,6 +11,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use arboard::Clipboard;
 use rdev::{listen, Event};
 use settings::Settings;
+use log::{info, error};
 
 fn create_key_combination_from_settings(binding: &settings::KeyBinding) -> key_combination::KeyCombination {
     let keys = settings::key_binding_to_keys(binding);
@@ -23,7 +24,7 @@ fn create_key_combination_from_settings(binding: &settings::KeyBinding) -> key_c
 }
 
 fn key_event_handle(
-    channel: mpsc::Receiver<Event>, 
+    channel: mpsc::Receiver<Event>,
     clipboard_data: Arc<Mutex<database::ClipboardData>>,
     settings: Settings,
 ) {
@@ -42,7 +43,7 @@ fn key_event_handle(
                             if copy_key_combination.is_active() {
                                 let mut clipboard = Clipboard::new().unwrap();
                                 if let Ok(text) = clipboard.get_text() {
-                                    println!("Clipboard content: {}", text);
+                                    info!("Clipboard content: {}", text);
                                     let clipboard_data = clipboard_data.lock().unwrap();
                                     clipboard_data.write(&text);
                                 }
@@ -63,7 +64,7 @@ fn key_event_handle(
                         //     let clipboard_data = clipboard_data.lock().unwrap();
                         //     let items = clipboard_data.get_clipboard_items(Some(5));
                         //     for item in items {
-                        //         println!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
+                        //         info!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
                         //     }
                         // }
                     },
@@ -81,11 +82,12 @@ fn callback(event: Event, channel: mpsc::Sender<Event>) {
 
 #[tokio::main]
 async fn main() {
-    println!("Pastery is running");
+    env_logger::init();
+    info!("Pastery is running");
     
     // 설정 로드
     let settings = Settings::load();
-    println!("Settings loaded. Server will run on port {}, max clipboard items: {}", 
+    info!("Settings loaded. Server will run on port {}, max clipboard items: {}", 
              settings.server_port, settings.max_clipboard_items);
     
     // 통합 데이터베이스 초기화 (clip.db 파일 하나만 사용)
@@ -118,6 +120,6 @@ async fn main() {
     if let Err(error) = listen(move |event| {
         callback(event, tx.clone())
     }) {
-        println!("Error: {:?}", error)
+        error!("Error: {:?}", error)
     }
 }

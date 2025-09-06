@@ -1,4 +1,5 @@
 
+use log::info;
 use redb::{Database, TableDefinition, ReadableTable, ReadableDatabase};
 use serde::{Serialize, Deserialize};
 
@@ -43,7 +44,7 @@ impl ClipboardData {
             }
         }
         let db = Database::create(&path).expect(&format!("Failed to create database at {}", &path));
-        println!("Clipboard database using clip.db at {} with max items: {}", &path, max_items);
+        info!("Clipboard database using clip.db at {} with max items: {}", &path, max_items);
         // Initialize the tables (클립보드와 메모 테이블 모두 초기화)
         let write_txn = db.begin_write().expect("Failed to begin write transaction");
         {
@@ -73,6 +74,7 @@ impl ClipboardData {
         self.cleanup_old_items();
     }
     
+    #[allow(dead_code)]
     pub fn read(&self, date_key: &str, sequence: u64) -> Option<String> {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
@@ -85,6 +87,7 @@ impl ClipboardData {
         }
     }
     
+    #[allow(dead_code)]
     pub fn read_by_date(&self, date_key: &str) -> Vec<(u64, String)> {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
@@ -111,6 +114,7 @@ impl ClipboardData {
         results
     }
 
+    #[allow(dead_code)]
     pub fn read_last(&self, count: usize) -> Vec<(String, u64, String)> {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let table = read_txn.open_table(CLIPBOARD_TABLE).expect("Failed to open table");
@@ -267,7 +271,7 @@ impl ClipboardData {
             }
             write_txn.commit().expect("Failed to commit transaction");
             
-            println!("Cleaned up {} old clipboard items. Current count: {}", 
+            info!("Cleaned up {} old clipboard items. Current count: {}", 
                      items_to_delete.len(), self.max_items);
         }
     }
@@ -285,6 +289,7 @@ impl ClipboardData {
         full_key
     }
 
+    #[allow(dead_code)]
     pub fn get_memo(&self, sequence: u64) -> Option<String> {
         let full_key = format!("memo-{}", sequence);
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
@@ -317,6 +322,7 @@ impl ClipboardData {
         write_txn.commit().expect("Failed to commit transaction");
     }
 
+    #[allow(dead_code)]
     pub fn get_memo_items(&self, count: Option<usize>) -> Vec<MemoItem> {
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");
         let memo_table = read_txn.open_table(MEMO_TABLE).expect("Failed to open memo table");
@@ -351,6 +357,7 @@ impl ClipboardData {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_memo_item(&self, sequence: u64) -> Option<MemoItem> {
         let full_key = format!("memo-{}", sequence);
         let read_txn = self.db.begin_read().expect("Failed to begin read transaction");

@@ -28,7 +28,6 @@ fn test_read_existing_data() {
     
     // read 함수 테스트
     if let Some(content) = clipboard_data.read(date_key, 1) {
-        println!("Read data: {}-1 -> {}", date_key, content);
         assert_eq!(content, "Hello, World!");
     } else {
         panic!("데이터를 읽을 수 없습니다");
@@ -94,14 +93,12 @@ fn test_read_multiple_data() {
     
     // 각 데이터를 읽어서 확인
     if let Some(content) = clipboard_data.read("2025-08-10", 1) {
-        println!("Read data: 2025-08-10-1 -> {}", content);
         assert_eq!(content, "First text");
     } else {
         panic!("데이터를 읽을 수 없습니다: 2025-08-10-1");
     }
     
     if let Some(content) = clipboard_data.read("2025-08-10", 2) {
-        println!("Read data: 2025-08-10-2 -> {}", content);
         assert_eq!(content, "Second text");
     } else {
         panic!("데이터를 읽을 수 없습니다: 2025-08-10-2");
@@ -171,11 +168,7 @@ fn test_read_last() {
     assert_eq!(recent_data[2].1, 1);
     assert_eq!(recent_data[2].2, "Text from Aug 10, seq 1");
     
-    println!("Recent data test passed:");
-    for (date, seq, text) in &recent_data {
-        println!("  {}-{} -> {}", date, seq, text);
-    }
-    
+        
     // 테스트 파일 정리
     fs::remove_file(test_path).unwrap();
 }
@@ -207,11 +200,6 @@ fn test_write_and_sequence() {
     assert_eq!(today_data[0], (1, "First clipboard content".to_string()));
     assert_eq!(today_data[1], (2, "Second clipboard content".to_string()));
     assert_eq!(today_data[2], (3, "Third clipboard content".to_string()));
-    
-    println!("Write test passed:");
-    for (seq, content) in &today_data {
-        println!("  {}-{} -> {}", today, seq, content);
-    }
     
     // 테스트 파일 정리
     fs::remove_file(test_path).unwrap();
@@ -248,11 +236,6 @@ fn test_max_items_cleanup() {
     assert_eq!(items[1].content, "Fourth item");
     assert_eq!(items[2].content, "Third item");
     
-    println!("Max items cleanup test passed:");
-    for item in &items {
-        println!("  {}-{} -> {}", item.date, item.sequence, item.content);
-    }
-    
     // 테스트 파일 정리
     fs::remove_file(test_path).unwrap();
 }
@@ -268,7 +251,7 @@ fn test_memo_item_functionality() {
     }
     
     // MemoData 인스턴스 생성
-    let memo_data = MemoData::new(test_path.to_string());
+    let memo_data = ClipboardData::new(test_path.to_string(), 1000);
     
     // 메모 추가 테스트 (새로운 API 사용)
     let key1 = memo_data.add_memo("Test memo 1");
@@ -304,11 +287,6 @@ fn test_memo_item_functionality() {
     // 개수 제한 테스트
     let limited_memo_items = memo_data.get_memo_items(Some(2));
     assert_eq!(limited_memo_items.len(), 2);
-    
-    println!("Memo items test passed:");
-    for item in &memo_items {
-        println!("  memo-{} -> {}", item.sequence, item.memo);
-    }
     
     // 테스트 파일 정리
     fs::remove_file(test_path).unwrap();

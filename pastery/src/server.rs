@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use warp::Filter;
 use serde::{Deserialize, Serialize};
 use crate::database::ClipboardData;
+use log::info;
 
 #[derive(Deserialize)]
 struct MemoRequest {
@@ -82,9 +83,11 @@ pub async fn start_server(
         .or(add_memo)
         .or(update_memo)
         .or(delete_memo)
-        .with(cors);
+        .with(cors)
+        .recover(handle_rejection);
 
     println!("Starting server on port {}", port);
+    info!("Starting server on port {}", port);
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }
 
@@ -98,11 +101,11 @@ async fn handle_get_clipboard(
     let clipboard_data = clipboard_data.lock().unwrap();
     let items = clipboard_data.get_clipboard_items(count);
 
-    println!("------------------------------------------------");
+    info!("------------------------------------------------");
     for item in items.clone() {
-        println!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
+        info!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
     }
-    println!("------------------------------------------------");
+    info!("------------------------------------------------");
 
     let response = ApiResponse::success(
         "Clipboard items retrieved successfully",
@@ -146,5 +149,11 @@ async fn handle_delete_memo(
     clipboard_data.delete_memo(sequence);
     
     let response = ApiResponse::success("Memo deleted successfully", None);
+    Ok(warp::reply::json(&response))
+}
+
+async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, std::convert::Infallible> {
+    let message = format!("{:?}", err);
+    let response = ApiResponse::error(&message);
     Ok(warp::reply::json(&response))
 }

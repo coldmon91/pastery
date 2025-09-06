@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use rdev::Key;
+use log::{warn, error};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KeyBinding {
@@ -46,16 +47,16 @@ impl Settings {
                 match serde_json::from_str(&content) {
                     Ok(settings) => settings,
                     Err(e) => {
-                        println!("Failed to parse settings.json: {}. Using default settings.", e);
+                        warn!("Failed to parse settings.json: {}. Using default settings.", e);
                         Self::default()
                     }
                 }
             }
             Err(_) => {
-                println!("settings.json not found. Creating default settings file.");
+                warn!("settings.json not found. Creating default settings file.");
                 let default_settings = Self::default();
                 if let Err(e) = default_settings.save() {
-                    println!("Failed to create default settings.json: {}", e);
+                    error!("Failed to create default settings.json: {}", e);
                 }
                 default_settings
             }
