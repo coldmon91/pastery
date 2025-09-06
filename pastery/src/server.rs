@@ -97,7 +97,13 @@ async fn handle_get_clipboard(
 
     let clipboard_data = clipboard_data.lock().unwrap();
     let items = clipboard_data.get_clipboard_items(count);
-    
+
+    println!("------------------------------------------------");
+    for item in items.clone() {
+        println!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
+    }
+    println!("------------------------------------------------");
+
     let response = ApiResponse::success(
         "Clipboard items retrieved successfully",
         Some(serde_json::to_value(&items).unwrap()),

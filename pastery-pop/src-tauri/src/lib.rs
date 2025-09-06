@@ -38,7 +38,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             hotkey: "Ctrl+Shift+V".to_string(),
-            server_url: "http://localhost:3030".to_string(),
+            server_url: "http://127.0.0.1:3030".to_string(),
             max_items_display: 5,
             popup_width: 350.0,
             popup_height: 450.0,

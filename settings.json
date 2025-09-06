@@ -1,3 +1,16 @@
 {
-  "language": "English", 
+  "copy_key": {
+    "ctrl": true,
+    "alt": false,
+    "shift": false,
+    "key": "c"
+  },
+  "paste_key": {
+    "ctrl": true,
+    "alt": false,
+    "shift": false,
+    "key": "v"
+  },
+  "server_port": 3030,
+  "max_clipboard_items": 1000
 }

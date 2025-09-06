@@ -73,12 +73,12 @@
   }
 
   onMount(() => {
-    loadClipboardItems();
+    // loadClipboardItems();
     window.addEventListener('keydown', handleEscape);
     
-    // 클립보드 갱신 이벤트 리스너 등록
     const unlistenRefresh = listen('refresh-clipboard', () => {
       loadClipboardItems();
+      window.scrollTo(0, 0);
     });
     
     return () => {

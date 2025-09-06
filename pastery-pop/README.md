@@ -15,7 +15,7 @@
 # 설정
 `settings.json` 파일을 통해 다음 설정을 변경할 수 있습니다:
 - `hotkey`: 팝업을 띄우는 키조합 (기본값: "Ctrl+Shift+V")
-- `server_url`: pastery 서버 URL (기본값: "http://localhost:3030")
+- `server_url`: pastery 서버 URL (기본값: "http://127.0.0.1:3030")
 - `max_items_display`: 표시할 최대 클립보드 항목 수 (기본값: 5)
 - `popup_width`: 팝업 창 너비 (기본값: 350)
 - `popup_height`: 팝업 창 높이 (기본값: 450)

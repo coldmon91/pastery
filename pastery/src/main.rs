@@ -58,14 +58,14 @@ fn key_event_handle(
                         if paste_key_combination.contains(key) {
                             paste_key_combination.press_key(key);
                         }
-                        if paste_key_combination.is_active() {
-                            // paste from user's choice - 최근 5개 클립보드 항목 표시
-                            let clipboard_data = clipboard_data.lock().unwrap();
-                            let items = clipboard_data.get_clipboard_items(Some(5));
-                            for item in items {
-                                println!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
-                            }
-                        }
+                        // if paste_key_combination.is_active() {
+                        //     // paste from user's choice - 최근 5개 클립보드 항목 표시
+                        //     let clipboard_data = clipboard_data.lock().unwrap();
+                        //     let items = clipboard_data.get_clipboard_items(Some(5));
+                        //     for item in items {
+                        //         println!("Clipboard data: {}-{}: \"{}\"", item.date, item.sequence, item.content);
+                        //     }
+                        // }
                     },
                     _ => {}
                 }
