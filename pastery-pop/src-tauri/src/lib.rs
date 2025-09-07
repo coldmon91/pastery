@@ -10,6 +10,8 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, GlobalShortcutExt}
 use serde::{Deserialize, Serialize};
 use std::fs;
 
+const SETTINGS_FILE: &str = "pastery-pop.json";
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ClipboardItem {
     date: String,
@@ -47,7 +49,7 @@ impl Default for Settings {
 }
 
 fn load_settings() -> Settings {
-    match fs::read_to_string("settings.json") {
+    match fs::read_to_string(SETTINGS_FILE) {
         Ok(content) => {
             match serde_json::from_str::<Settings>(&content) {
                 Ok(settings) => settings,
@@ -178,6 +180,13 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let background_handle = std::thread::spawn(|| {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            pastery::run_pastery();
+        });
+    });
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -224,4 +233,6 @@ pub fn run() {
         ])
         .run(generate_context!())
         .expect("error while running tauri application");
+
+    let _ = background_handle.join();
 }

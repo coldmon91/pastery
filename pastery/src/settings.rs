@@ -3,6 +3,8 @@ use std::fs;
 use rdev::Key;
 use log::{warn, error};
 
+const SETTINGS_FILE: &str = "pastery.json";
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct KeyBinding {
     pub ctrl: bool,
@@ -17,10 +19,19 @@ pub struct Settings {
     pub paste_key: KeyBinding,
     pub server_port: u16,
     pub max_clipboard_items: usize,
+    pub db_path: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
+        let tmp_dir = std::env::temp_dir().join("Pastery");
+        if !tmp_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
+                error!("Failed to create temp directory {:?}: {}", tmp_dir, e);
+            }
+        }
+        let db_path = tmp_dir.join("clip.db").to_str().unwrap().to_string();
+        println!("Using temp directory for database: {:?}", db_path);
         Settings {
             copy_key: KeyBinding {
                 ctrl: true,
@@ -36,27 +47,28 @@ impl Default for Settings {
             },
             server_port: 3030,
             max_clipboard_items: 1000, // 기본값: 1000개
+            db_path: db_path,
         }
     }
 }
 
 impl Settings {
     pub fn load() -> Self {
-        match fs::read_to_string("settings.json") {
+        match fs::read_to_string(SETTINGS_FILE) {
             Ok(content) => {
                 match serde_json::from_str(&content) {
                     Ok(settings) => settings,
                     Err(e) => {
-                        warn!("Failed to parse settings.json: {}. Using default settings.", e);
+                        warn!("Failed to parse {}: {}. Using default settings.", SETTINGS_FILE, e);
                         Self::default()
                     }
                 }
             }
             Err(_) => {
-                warn!("settings.json not found. Creating default settings file.");
+                warn!("{} not found. Creating default settings file.", SETTINGS_FILE);
                 let default_settings = Self::default();
                 if let Err(e) = default_settings.save() {
-                    error!("Failed to create default settings.json: {}", e);
+                    error!("Failed to create {}: {}", SETTINGS_FILE, e);
                 }
                 default_settings
             }
@@ -65,7 +77,7 @@ impl Settings {
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let content = serde_json::to_string_pretty(self)?;
-        fs::write("settings.json", content)?;
+        fs::write(SETTINGS_FILE, content)?;
         Ok(())
     }
 }

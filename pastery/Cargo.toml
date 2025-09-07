@@ -3,6 +3,17 @@ name = "pastery"
 version = "0.1.0"
 edition = "2024"
 
+# [workspace]
+# resolver = "3"
+
+[lib]
+name = "pastery"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pastery_bin"
+path = "src/main.rs"
+
 [dependencies]
 arboard = "3.6.0"
 rdev = "0.5.3"
