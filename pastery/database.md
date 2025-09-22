@@ -3,6 +3,9 @@
 ## Database file name
 - `clip.db`
 
+## Rules
+- store maximum `max_clipboard_items` clipboard items
+
 ## Key Formats
 
 ### Clipboard key format

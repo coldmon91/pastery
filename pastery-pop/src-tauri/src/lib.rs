@@ -68,6 +68,30 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
+async fn get_user_memos(count: Option<u32>) -> Result<Vec<ClipboardItem>, String> {
+    let settings = load_settings();
+    let count = count.unwrap_or(settings.max_items_display);
+    let url = format!("{}/user_memos?count={}", settings.server_url, count);
+    
+    let client = reqwest::Client::new();
+    match client.get(&url).send().await {
+        Ok(response) => {
+            match response.json::<ApiResponse>().await {
+                Ok(api_response) => {
+                    if api_response.success {
+                        Ok(api_response.data.unwrap_or_default())
+                    } else {
+                        Err(api_response.message)
+                    }
+                }
+                Err(e) => Err(format!("Failed to parse response: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Failed to fetch user memos: {}", e)),
+    }
+}
+
+#[tauri::command]
 async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<ClipboardItem>, String> {
     let settings = load_settings();
     let count = count.unwrap_or(settings.max_items_display);
@@ -228,6 +252,7 @@ pub fn run() {
         .invoke_handler(generate_handler![
             greet,
             get_clipboard_items,
+            get_user_memos,
             show_popup_at_cursor,
             hide_popup
         ])
