@@ -1,4 +1,5 @@
 # Pastery-pop
+
 - 기본경로: ${workspaceFolder}/pastery-pop
 - Tauri + SvelteKit
 - This template should help get you started developing with Tauri and SvelteKit in Vite.
@@ -16,16 +17,18 @@
 ## PopupGUI에 표시되는 항목
 
 - 최근 클립보드 항목 n개 (기본값: 5, `settings.json "max_items_display"`에서 변경 가능)
-- 사용자 메모 n개 (기본값: 5)
+- `UserMemo` n개 (기본값: 5)
+- 오른쪽 하단에 `UserMemo` 추가 버튼이 있다
+  - 버튼의 모양은 파란색 동그라미 `+` 아이콘이다
 
 ## 설정
 
-`settings.json` 파일을 통해 다음 설정을 변경할 수 있습니다:
-- `hotkey`: 팝업을 띄우는 키조합 (기본값: "Ctrl+Shift+V")
-- `server_url`: pastery 서버 URL (기본값: "http://127.0.0.1:3030")
-- `max_items_display`: 표시할 최대 클립보드 항목 수 (기본값: 5)
-- `popup_width`: 팝업 창 너비 (기본값: 350)
-- `popup_height`: 팝업 창 높이 (기본값: 450)
+- `settings.json` 파일을 통해 다음 설정을 변경할 수 있습니다
+  - `hotkey`: 팝업을 띄우는 키조합 (기본값: "Ctrl+Shift+V")
+  - `server_url`: pastery 서버 URL (기본값: "http://127.0.0.1:3030")
+  - `max_items_display`: 표시할 최대 클립보드 항목 수 (기본값: 5)
+  - `popup_width`: 팝업 창 너비 (기본값: 350)
+  - `popup_height`: 팝업 창 높이 (기본값: 450)
 
 ## 사용법
 
@@ -38,6 +41,7 @@
 ## 빌드 및 실행
 
 ```bash
+cd pastery-pop
 npm install
 npm run tauri dev
 ```

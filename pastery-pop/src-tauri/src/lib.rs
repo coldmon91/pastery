@@ -20,11 +20,26 @@ struct ClipboardItem {
     memo: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct MemoItem {
+    sequence: i32,
+    memo: String,
+}
+
+// 프론트엔드에서 사용할 통합 아이템 구조체
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct DisplayItem {
+    date: Option<String>,
+    sequence: i32,
+    content: String,
+    memo: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-struct ApiResponse {
+struct ApiResponse<T> {
     success: bool,
     message: String,
-    data: Option<Vec<ClipboardItem>>,
+    data: Option<T>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,18 +83,27 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn get_user_memos(count: Option<u32>) -> Result<Vec<ClipboardItem>, String> {
+async fn get_user_memos(count: Option<u32>) -> Result<Vec<DisplayItem>, String> {
     let settings = load_settings();
     let count = count.unwrap_or(settings.max_items_display);
-    let url = format!("{}/user_memos?count={}", settings.server_url, count);
+    let url = format!("{}/memo?count={}", settings.server_url, count);
     
     let client = reqwest::Client::new();
     match client.get(&url).send().await {
         Ok(response) => {
-            match response.json::<ApiResponse>().await {
+            match response.json::<ApiResponse<Vec<MemoItem>>>().await {
                 Ok(api_response) => {
                     if api_response.success {
-                        Ok(api_response.data.unwrap_or_default())
+                        let display_items = api_response.data.unwrap_or_default()
+                            .into_iter()
+                            .map(|memo| DisplayItem {
+                                date: None,
+                                sequence: memo.sequence,
+                                content: memo.memo.clone(),
+                                memo: Some(memo.memo),
+                            })
+                            .collect();
+                        Ok(display_items)
                     } else {
                         Err(api_response.message)
                     }
@@ -92,7 +116,50 @@ async fn get_user_memos(count: Option<u32>) -> Result<Vec<ClipboardItem>, String
 }
 
 #[tauri::command]
-async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<ClipboardItem>, String> {
+async fn add_user_memo(memo_content: String) -> Result<(), String> {
+    let settings = load_settings();
+    let url = format!("{}/memo", settings.server_url);
+    
+    let memo_data = serde_json::json!({
+        "memo": memo_content
+    });
+    
+    let client = reqwest::Client::new();
+    match client.post(&url)
+        .header("Content-Type", "application/json")
+        .json(&memo_data)
+        .send().await {
+        Ok(response) => {
+            // 응답 상태 코드 확인
+            let status = response.status();
+            println!("Response status: {}", status);
+            
+            // 응답 텍스트를 먼저 읽어서 로깅
+            match response.text().await {
+                Ok(text) => {
+                    println!("Response text: {}", text);
+                    
+                    // JSON 파싱 시도
+                    match serde_json::from_str::<ApiResponse<serde_json::Value>>(&text) {
+                        Ok(api_response) => {
+                            if api_response.success {
+                                Ok(())
+                            } else {
+                                Err(api_response.message)
+                            }
+                        }
+                        Err(e) => Err(format!("Failed to parse JSON response '{}': {}", text, e)),
+                    }
+                }
+                Err(e) => Err(format!("Failed to read response text: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Failed to add user memo: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<DisplayItem>, String> {
     let settings = load_settings();
     let count = count.unwrap_or(settings.max_items_display);
     let url = format!("{}/clipboard?count={}", settings.server_url, count);
@@ -100,10 +167,19 @@ async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<ClipboardItem>, S
     let client = reqwest::Client::new();
     match client.get(&url).send().await {
         Ok(response) => {
-            match response.json::<ApiResponse>().await {
+            match response.json::<ApiResponse<Vec<ClipboardItem>>>().await {
                 Ok(api_response) => {
                     if api_response.success {
-                        Ok(api_response.data.unwrap_or_default())
+                        let display_items = api_response.data.unwrap_or_default()
+                            .into_iter()
+                            .map(|item| DisplayItem {
+                                date: Some(item.date),
+                                sequence: item.sequence,
+                                content: item.content,
+                                memo: item.memo,
+                            })
+                            .collect();
+                        Ok(display_items)
                     } else {
                         Err(api_response.message)
                     }
@@ -253,6 +329,7 @@ pub fn run() {
             greet,
             get_clipboard_items,
             get_user_memos,
+            add_user_memo,
             show_popup_at_cursor,
             hide_popup
         ])
