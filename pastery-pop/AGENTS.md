@@ -16,10 +16,11 @@
 
 ## PopupGUI에 표시되는 항목
 
+- 오른쪽 하단에 `UserMemo`를 추가하는 버튼이 있다
+- `note-button` (🪄) 버튼을 누르면 `usermemo-list`를 보여준다.
+- `recent-clipboard-button` (📋) 버튼을 누르면 `recent-clipboard-list`를 보여준다.
 - 최근 클립보드 항목 n개 (기본값: 5, `settings.json "max_items_display"`에서 변경 가능)
 - `UserMemo` n개 (기본값: 5)
-- 오른쪽 하단에 `UserMemo` 추가 버튼이 있다
-  - 버튼의 모양은 파란색 동그라미 `+` 아이콘이다
 
 ## 설정
 

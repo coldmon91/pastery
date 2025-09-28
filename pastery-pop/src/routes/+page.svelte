@@ -9,6 +9,7 @@
   let error = $state('');
   let showMemoDialog = $state(false);
   let newMemoContent = $state('');
+  let currentView = $state('clipboard'); // 'clipboard' or 'memo'
 
   async function loadAllItems() {
     await Promise.all([loadClipboardItems(), loadUserMemoItems()]);
@@ -147,6 +148,14 @@
     }
   }
 
+  function showClipboardView() {
+    currentView = 'clipboard';
+  }
+
+  function showMemoView() {
+    currentView = 'memo';
+  }
+
   onMount(() => {
     // loadClipboardItems();
     window.addEventListener('keydown', handleEscape);
@@ -186,49 +195,71 @@
     {:else if clipboardItems.length === 0 && userMemoItems.length === 0}
       <div class="empty">No clipboard items or memos found</div>
     {:else}
-      <div class="clipboard-list">
-        {#if clipboardItems.length > 0}
-          <div class="section-title">Recent Clipboard</div>
-          {#each clipboardItems as item, index}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div 
-              class="clipboard-item" 
-              role="button"
-              tabindex="0"
-              onclick={() => selectItem(item)}
-              onkeydown={(e) => handleItemKeydown(e, item)}
-            >
-              <div class="item-content">
-                <div class="item-text">{truncateText(item.content)}</div>
-                {#if item.memo}
-                  <div class="item-memo">{item.memo}</div>
-                {/if}
-              </div>
-            </div>
-          {/each}
+      <div class="content-container">
+        <!-- 버튼 행 -->
+        <div class="button-row">
+          <button 
+            class="recent-clipboard-button {currentView === 'clipboard' ? 'active' : ''}" 
+            onclick={showClipboardView}
+          >�</button>
+          <button 
+            class="note-button {currentView === 'memo' ? 'active' : ''}" 
+            onclick={showMemoView}
+          >🪄</button>
+        </div>
+
+        <!-- 클립보드 목록 -->
+        {#if currentView === 'clipboard'}
+          <div class="clipboard-list">
+            {#if clipboardItems.length > 0}
+              {#each clipboardItems as item, index}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  class="clipboard-item" 
+                  role="button"
+                  tabindex="0"
+                  onclick={() => selectItem(item)}
+                  onkeydown={(e) => handleItemKeydown(e, item)}
+                >
+                  <div class="item-content">
+                    <div class="item-text">{truncateText(item.content)}</div>
+                    {#if item.memo}
+                      <div class="item-memo">{item.memo}</div>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            {:else}
+              <div class="empty">No clipboard items found</div>
+            {/if}
+          </div>
         {/if}
 
-        <div class="usermemo-list">
-          {#if userMemoItems.length > 0}
-            <div class="section-title">User Memos</div>
-            {#each userMemoItems as memo, index}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div 
-                class="clipboard-item memo-item" 
-                role="button"
-                tabindex="0"
-                onclick={() => selectItem(memo)}
-                onkeydown={(e) => handleItemKeydown(e, memo)}
-              >
-                <div class="item-content">
-                  <div class="item-text">{truncateText(memo.memo)}</div>
+        <!-- 사용자 메모 목록 -->
+        {#if currentView === 'memo'}
+          <div class="usermemo-list">
+            {#if userMemoItems.length > 0}
+              {#each userMemoItems as memo, index}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  class="clipboard-item memo-item" 
+                  role="button"
+                  tabindex="0"
+                  onclick={() => selectItem(memo)}
+                  onkeydown={(e) => handleItemKeydown(e, memo)}
+                >
+                  <div class="item-content">
+                    <div class="item-text">{truncateText(memo.memo)}</div>
+                  </div>
                 </div>
-              </div>
-            {/each}
-          {/if}
-        </div>
+              {/each}
+            {:else}
+              <div class="empty">No user memos found</div>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -556,5 +587,77 @@
     font-size: 11px;
   }
 
+  /* Your Note 버튼 스타일 */
+  .note-button {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 120, 212, 0.3);
+    background: rgba(0, 120, 212, 0.1);
+    color: #007acc;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .note-button:hover {
+    background: rgba(0, 120, 212, 0.2);
+    border-color: rgba(0, 120, 212, 0.5);
+    transform: scale(1.05);
+  }
+
+  .note-button:active {
+    transform: scale(0.95);
+  }
+
+  .note-button.active {
+    background: #007acc;
+    color: white;
+    border-color: #007acc;
+  }
+
+  /* Recent clipboard 버튼 스타일 */
+  .recent-clipboard-button {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 120, 212, 0.3);
+    background: rgba(0, 120, 212, 0.1);
+    color: #007acc;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .recent-clipboard-button:hover {
+    background: rgba(0, 120, 212, 0.2);
+    border-color: rgba(0, 120, 212, 0.5);
+    transform: scale(1.05);
+  }
+
+  .recent-clipboard-button:active {
+    transform: scale(0.95);
+  }
+
+  .recent-clipboard-button.active {
+    background: #007acc;
+    color: white;
+    border-color: #007acc;
+  }
+
+  /* 버튼 행 컨테이너 스타일 */
+  .button-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
 
 </style>
