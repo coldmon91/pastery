@@ -201,7 +201,7 @@
           <button 
             class="recent-clipboard-button {currentView === 'clipboard' ? 'active' : ''}" 
             onclick={showClipboardView}
-          >�</button>
+          >📋</button>
           <button 
             class="note-button {currentView === 'memo' ? 'active' : ''}" 
             onclick={showMemoView}
@@ -268,14 +268,16 @@
     <small>Press ESC to close • Click item to copy</small>
   </div>
   
-  <!-- UserMemo 추가 버튼 -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="add-memo-btn" onclick={showAddMemoDialog} onkeydown={handleAddMemoKeydown} role="button" tabindex="0" title="Add User Memo">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
-    </svg>
-  </div>
+  <!-- UserMemo 추가 버튼 - 메모 뷰일 때만 표시 -->
+  {#if currentView === 'memo'}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="add-memo-btn" onclick={showAddMemoDialog} onkeydown={handleAddMemoKeydown} role="button" tabindex="0" title="Add User Memo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+      </svg>
+    </div>
+  {/if}
 
   <!-- UserMemo 추가 다이얼로그 -->
   {#if showMemoDialog}
