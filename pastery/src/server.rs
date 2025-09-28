@@ -53,6 +53,13 @@ pub async fn start_server(
         .and(clipboard_data_filter.clone())
         .and_then(handle_get_clipboard);
 
+    // GET /memo - 메모 항목들 조회
+    let get_memo = warp::path("memo")
+        .and(warp::get())
+        .and(warp::query::<std::collections::HashMap<String, String>>())
+        .and(clipboard_data_filter.clone())
+        .and_then(handle_get_memo);
+
     // POST /memo - 사용자 정의 메모 추가
     let add_memo = warp::path("memo")
         .and(warp::post())
@@ -80,6 +87,7 @@ pub async fn start_server(
         .allow_methods(vec!["GET", "POST", "PUT", "DELETE"]);
 
     let routes = get_clipboard
+        .or(get_memo)
         .or(add_memo)
         .or(update_memo)
         .or(delete_memo)
@@ -109,6 +117,30 @@ async fn handle_get_clipboard(
 
     let response = ApiResponse::success(
         "Clipboard items retrieved successfully",
+        Some(serde_json::to_value(&items).unwrap()),
+    );
+    
+    Ok(warp::reply::json(&response))
+}
+
+async fn handle_get_memo(
+    query: std::collections::HashMap<String, String>,
+    clipboard_data: Arc<Mutex<ClipboardData>>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let count = query.get("count")
+        .and_then(|c| c.parse::<usize>().ok());
+
+    let clipboard_data = clipboard_data.lock().unwrap();
+    let items = clipboard_data.get_memo_items(count);
+
+    info!("------------------------------------------------");
+    for item in items.iter() {
+        info!("Memo data: {}: \"{}\"", item.sequence, item.memo);
+    }
+    info!("------------------------------------------------");
+
+    let response = ApiResponse::success(
+        "Memo items retrieved successfully",
         Some(serde_json::to_value(&items).unwrap()),
     );
     

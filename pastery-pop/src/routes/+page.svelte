@@ -4,12 +4,15 @@
   import { onMount } from 'svelte';
 
   let clipboardItems = $state([]);
-  let userMemos = $state([]);
+  let userMemoItems = $state([]);
   let loading = $state(false);
   let error = $state('');
   let showMemoDialog = $state(false);
   let newMemoContent = $state('');
 
+  async function loadAllItems() {
+    await Promise.all([loadClipboardItems(), loadUserMemoItems()]);
+  }
   async function loadClipboardItems() {
     loading = true;
     error = '';
@@ -23,10 +26,10 @@
     loading = false;
   }
 
-  async function loadUserMemos() {
+  async function loadUserMemoItems() {
     try {
       const memos = await invoke("get_user_memos", { count: 5 });
-      userMemos = memos;
+      userMemoItems = memos;
     } catch (err) {
       console.error('Failed to load user memos:', err);
     }
@@ -116,7 +119,7 @@
       showMemoDialog = false;
       newMemoContent = '';
       // 메모 목록 새로고침
-      await loadUserMemos();
+      await loadUserMemoItems();
     } catch (err) {
       console.error('Failed to add memo:', err);
       // 더 자세한 에러 정보 표시
@@ -150,7 +153,7 @@
     
     const unlistenRefresh = listen('refresh-clipboard', () => {
       loadClipboardItems();
-      loadUserMemos();
+      loadUserMemoItems();
       window.scrollTo(0, 0);
     });
     
@@ -178,13 +181,12 @@
     {:else if error}
       <div class="error">
         <p>Error: {error}</p>
-        <button onclick={loadClipboardItems}>Retry</button>
+        <button onclick={loadAllItems}>Retry</button>
       </div>
-    {:else if clipboardItems.length === 0 && userMemos.length === 0}
+    {:else if clipboardItems.length === 0 && userMemoItems.length === 0}
       <div class="empty">No clipboard items or memos found</div>
     {:else}
       <div class="clipboard-list">
-        <!-- 클립보드 아이템 -->
         {#if clipboardItems.length > 0}
           <div class="section-title">Recent Clipboard</div>
           {#each clipboardItems as item, index}
@@ -207,25 +209,26 @@
           {/each}
         {/if}
 
-        <!-- UserMemo 아이템 -->
-        {#if userMemos.length > 0}
-          <div class="section-title">User Memos</div>
-          {#each userMemos as memo, index}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div 
-              class="clipboard-item memo-item" 
-              role="button"
-              tabindex="0"
-              onclick={() => selectItem(memo)}
-              onkeydown={(e) => handleItemKeydown(e, memo)}
-            >
-              <div class="item-content">
-                <div class="item-text">{truncateText(memo.memo)}</div>
+        <div class="usermemo-list">
+          {#if userMemoItems.length > 0}
+            <div class="section-title">User Memos</div>
+            {#each userMemoItems as memo, index}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div 
+                class="clipboard-item memo-item" 
+                role="button"
+                tabindex="0"
+                onclick={() => selectItem(memo)}
+                onkeydown={(e) => handleItemKeydown(e, memo)}
+              >
+                <div class="item-content">
+                  <div class="item-text">{truncateText(memo.memo)}</div>
+                </div>
               </div>
-            </div>
-          {/each}
-        {/if}
+            {/each}
+          {/if}
+        </div>
       </div>
     {/if}
   </div>
