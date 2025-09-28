@@ -2,6 +2,17 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from 'svelte';
+  import ContextMenu from '../components/ContextMenu.svelte';
+  import EditMemoDialog from '../components/EditMemoDialog.svelte';
+  import { 
+    contextMenuStore, 
+    editDialogStore, 
+    showContextMenu, 
+    hideContextMenu, 
+    showEditDialog, 
+    hideEditDialog,
+    createGlobalClickHandler 
+  } from '../utils/contextMenuStore.js';
 
   let clipboardItems = $state([]);
   let userMemoItems = $state([]);
@@ -156,6 +167,57 @@
     currentView = 'memo';
   }
 
+  // 컨텍스트 메뉴 이벤트 핸들러들
+  function handleContextMenuEvent(event, memo) {
+    showContextMenu(event, memo);
+  }
+
+  async function handleEditMemo(event) {
+    const selectedItem = event.detail;
+    if (selectedItem) {
+      showEditDialog(selectedItem.memo || '');
+      hideContextMenu();
+    }
+  }
+
+  async function handleDeleteMemo(event) {
+    const selectedItem = event.detail;
+    if (!selectedItem) return;
+    
+    try {
+      await invoke("delete_user_memo", { memoId: selectedItem.id });
+      hideContextMenu();
+      await loadUserMemoItems();
+    } catch (err) {
+      console.error('Failed to delete memo:', err);
+      error = 'Failed to delete memo: ' + (err || 'Unknown error').toString();
+    }
+  }
+
+  async function handleUpdateMemo(event) {
+    const content = event.detail;
+    const contextMenu = $contextMenuStore;
+    
+    if (!content.trim() || !contextMenu.selectedItem) return;
+    
+    try {
+      await invoke("update_user_memo", { 
+        memoId: contextMenu.selectedItem.id, 
+        memoContent: content 
+      });
+      
+      hideEditDialog();
+      await loadUserMemoItems();
+    } catch (err) {
+      console.error('Failed to update memo:', err);
+      error = 'Failed to update memo: ' + (err || 'Unknown error').toString();
+    }
+  }
+
+  function handleCancelEdit() {
+    hideEditDialog();
+  }
+
   onMount(() => {
     // loadClipboardItems();
     window.addEventListener('keydown', handleEscape);
@@ -165,9 +227,14 @@
       loadUserMemoItems();
       window.scrollTo(0, 0);
     });
+
+    // 전역 클릭 이벤트로 컨텍스트 메뉴 숨기기
+    const globalClickHandler = createGlobalClickHandler($contextMenuStore.visible);
+    window.addEventListener('click', globalClickHandler);
     
     return () => {
       window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('click', globalClickHandler);
       unlistenRefresh.then(unlisten => unlisten());
     };
   });
@@ -249,6 +316,7 @@
                   tabindex="0"
                   onclick={() => selectItem(memo)}
                   onkeydown={(e) => handleItemKeydown(e, memo)}
+                  oncontextmenu={(e) => handleContextMenuEvent(e, memo)}
                 >
                   <div class="item-content">
                     <div class="item-text">{truncateText(memo.memo)}</div>
@@ -283,7 +351,7 @@
   {#if showMemoDialog}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="memo-dialog-overlay" onclick={cancelMemoDialog} role="dialog" aria-label="Add memo dialog">
+    <div class="memo-dialog-overlay" onclick={cancelMemoDialog} role="dialog" aria-label="Add memo dialog" tabindex="0">
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="memo-dialog" onclick={(e) => e.stopPropagation()}>
@@ -305,6 +373,23 @@
       </div>
     </div>
   {/if}
+
+  <!-- 컨텍스트 메뉴 컴포넌트 -->
+  <ContextMenu 
+    visible={$contextMenuStore.visible}
+    position={$contextMenuStore.position}
+    selectedItem={$contextMenuStore.selectedItem}
+    on:edit={handleEditMemo}
+    on:delete={handleDeleteMemo}
+  />
+
+  <!-- 편집 다이얼로그 컴포넌트 -->
+  <EditMemoDialog 
+    visible={$editDialogStore.visible}
+    memoContent={$editDialogStore.content}
+    on:update={handleUpdateMemo}
+    on:cancel={handleCancelEdit}
+  />
 </div>
 
 <style>
@@ -386,14 +471,7 @@
     gap: 8px;
   }
 
-  .section-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: #666;
-    margin: 8px 0 4px 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+
 
   .clipboard-item {
     display: flex;
@@ -661,5 +739,7 @@
     gap: 8px;
     margin-bottom: 8px;
   }
+
+
 
 </style>

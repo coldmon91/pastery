@@ -21,6 +21,9 @@
 - `recent-clipboard-button` (📋) 버튼을 누르면 `recent-clipboard-list`를 보여준다.
 - 최근 클립보드 항목 n개 (기본값: 5, `settings.json "max_items_display"`에서 변경 가능)
 - `UserMemo` n개 (기본값: 5)
+- `UserMemo`항목을 우클릭하면 컨텍스트 메뉴가 나타난다. 
+  - `Edit`: 메모 내용을 수정하는 다이얼로그가 나타난다.
+  - `Delete`: 메모를 삭제한다.
 
 ## 설정
 
