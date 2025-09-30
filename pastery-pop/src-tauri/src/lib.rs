@@ -29,6 +29,7 @@ struct MemoItem {
 // 프론트엔드에서 사용할 통합 아이템 구조체
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct DisplayItem {
+    id: i32,        // sequence를 id로 사용
     date: Option<String>,
     sequence: i32,
     content: String,
@@ -97,6 +98,7 @@ async fn get_user_memos(count: Option<u32>) -> Result<Vec<DisplayItem>, String> 
                         let display_items = api_response.data.unwrap_or_default()
                             .into_iter()
                             .map(|memo| DisplayItem {
+                                id: memo.sequence,
                                 date: None,
                                 sequence: memo.sequence,
                                 content: memo.memo.clone(),
@@ -159,6 +161,82 @@ async fn add_user_memo(memo_content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn update_user_memo(memo_id: i32, memo_content: String) -> Result<(), String> {
+    let settings = load_settings();
+    let url = format!("{}/memo", settings.server_url);
+    
+    let memo_data = serde_json::json!({
+        "sequence": memo_id,
+        "memo": memo_content
+    });
+    
+    let client = reqwest::Client::new();
+    println!("Sending update request with memo_data: {:?}", memo_data);
+    
+    match client.put(&url)
+        .header("Content-Type", "application/json")
+        .json(&memo_data)
+        .send().await {
+        Ok(response) => {
+            let status = response.status();
+            println!("Update memo response status: {}", status);
+            
+            match response.text().await {
+                Ok(text) => {
+                    println!("Update memo response text: {}", text);
+                    
+                    match serde_json::from_str::<ApiResponse<serde_json::Value>>(&text) {
+                        Ok(api_response) => {
+                            if api_response.success {
+                                Ok(())
+                            } else {
+                                Err(api_response.message)
+                            }
+                        }
+                        Err(e) => Err(format!("Failed to parse JSON response '{}': {}", text, e)),
+                    }
+                }
+                Err(e) => Err(format!("Failed to read response text: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Failed to update user memo: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn delete_user_memo(memo_id: i32) -> Result<(), String> {
+    let settings = load_settings();
+    let url = format!("{}/memo/{}", settings.server_url, memo_id);
+    
+    let client = reqwest::Client::new();
+    match client.delete(&url).send().await {
+        Ok(response) => {
+            let status = response.status();
+            println!("Delete memo response status: {}", status);
+            
+            match response.text().await {
+                Ok(text) => {
+                    println!("Delete memo response text: {}", text);
+                    
+                    match serde_json::from_str::<ApiResponse<serde_json::Value>>(&text) {
+                        Ok(api_response) => {
+                            if api_response.success {
+                                Ok(())
+                            } else {
+                                Err(api_response.message)
+                            }
+                        }
+                        Err(e) => Err(format!("Failed to parse JSON response '{}': {}", text, e)),
+                    }
+                }
+                Err(e) => Err(format!("Failed to read response text: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Failed to delete user memo: {}", e)),
+    }
+}
+
+#[tauri::command]
 async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<DisplayItem>, String> {
     let settings = load_settings();
     let count = count.unwrap_or(settings.max_items_display);
@@ -173,6 +251,7 @@ async fn get_clipboard_items(count: Option<u32>) -> Result<Vec<DisplayItem>, Str
                         let display_items = api_response.data.unwrap_or_default()
                             .into_iter()
                             .map(|item| DisplayItem {
+                                id: item.sequence,
                                 date: Some(item.date),
                                 sequence: item.sequence,
                                 content: item.content,
@@ -330,6 +409,8 @@ pub fn run() {
             get_clipboard_items,
             get_user_memos,
             add_user_memo,
+            update_user_memo,
+            delete_user_memo,
             show_popup_at_cursor,
             hide_popup
         ])

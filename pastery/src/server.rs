@@ -166,9 +166,12 @@ async fn handle_update_memo(
     request: UpdateMemoRequest,
     clipboard_data: Arc<Mutex<ClipboardData>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    info!("Updating memo - sequence: {}, memo: '{}'", request.sequence, request.memo);
+    
     let clipboard_data = clipboard_data.lock().unwrap();
     clipboard_data.update_memo(request.sequence, &request.memo);
     
+    info!("Memo updated successfully");
     let response = ApiResponse::success("Memo updated successfully", None);
     Ok(warp::reply::json(&response))
 }

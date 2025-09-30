@@ -41,6 +41,7 @@
   async function loadUserMemoItems() {
     try {
       const memos = await invoke("get_user_memos", { count: 5 });
+      console.log('Loaded user memos:', memos);
       userMemoItems = memos;
     } catch (err) {
       console.error('Failed to load user memos:', err);
@@ -174,11 +175,16 @@
 
   async function handleEditMemo(event) {
     const selectedItem = event.detail;
+    console.log('Edit memo selected item:', selectedItem);
     if (selectedItem) {
+      // 선택된 아이템을 전역 변수에 저장
+      currentEditingItem = selectedItem;
       showEditDialog(selectedItem.memo || '');
       hideContextMenu();
     }
   }
+
+  let currentEditingItem = null;
 
   async function handleDeleteMemo(event) {
     const selectedItem = event.detail;
@@ -196,18 +202,26 @@
 
   async function handleUpdateMemo(event) {
     const content = event.detail;
-    const contextMenu = $contextMenuStore;
     
-    if (!content.trim() || !contextMenu.selectedItem) return;
+    if (!content.trim() || !currentEditingItem) return;
+    
+    console.log('Updating memo:', {
+      id: currentEditingItem.id,
+      content: content,
+      currentEditingItem: currentEditingItem
+    });
     
     try {
       await invoke("update_user_memo", { 
-        memoId: contextMenu.selectedItem.id, 
+        memoId: currentEditingItem.id, 
         memoContent: content 
       });
       
+      console.log('Memo update successful, refreshing list...');
       hideEditDialog();
+      currentEditingItem = null;
       await loadUserMemoItems();
+      console.log('User memo list refreshed');
     } catch (err) {
       console.error('Failed to update memo:', err);
       error = 'Failed to update memo: ' + (err || 'Unknown error').toString();
@@ -216,6 +230,7 @@
 
   function handleCancelEdit() {
     hideEditDialog();
+    currentEditingItem = null;
   }
 
   onMount(() => {
@@ -739,7 +754,4 @@
     gap: 8px;
     margin-bottom: 8px;
   }
-
-
-
 </style>
