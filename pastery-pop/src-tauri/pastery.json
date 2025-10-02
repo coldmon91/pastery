@@ -13,5 +13,5 @@
   },
   "server_port": 3030,
   "max_clipboard_items": 1000,
-  "db_path": "C:\\Users\\ckstm\\AppData\\Local\\Temp\\Pastery\\clip.db"
+  "db_path": "/tmp/Pastery/clip.db"
 }
